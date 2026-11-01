@@ -236,8 +236,11 @@ test('enrichment stays off without a key and refuses non-loopback http', () => {
   assert.equal(enrichmentConfig({ LLM_API_KEY: 'k', LLM_API_BASE: 'http://api.example.com/v4' }), null);
   assert.equal(enrichmentConfig({ LLM_API_KEY: 'k', LLM_API_BASE: 'not a url' }), null);
   const https = enrichmentConfig({ LLM_API_KEY: 'k' });
-  assert.equal(https.model, 'glm-4.6');
+  assert.equal(https.model, 'glm-4.5-flash');
   assert.ok(https.base.startsWith('https://'));
+  assert.equal(enrichmentConfig({ ZAI_API_KEY: 'k' }).model, 'glm-4.5-flash');
+  assert.equal(enrichmentConfig({ NEWS_MODEL_API_KEY: 'k' }).model, 'glm-4.5-flash');
+  assert.equal(enrichmentConfig({ LLM_API_KEY: 'k', LLM_MODEL: 'other' }).model, 'other');
   const local = enrichmentConfig({ LLM_API_KEY: 'k', LLM_API_BASE: 'http://127.0.0.1:8799' });
   assert.equal(local.base, 'http://127.0.0.1:8799');
 });
@@ -301,6 +304,40 @@ test('a good reply labels bare records and nothing else', async () => {
   assert.equal(isUnlabelled(records[0]), false);
   assert.deepEqual(records[0].topics, ['signings']);
   assert.deepEqual(records[1].entities, ['ktm']);
+});
+
+test('a throttled request is retried once, with Z.ai thinking switched off', async () => {
+  const records = [{ id: 'bare', title: 'Week 1', topics: [], entities: [] }];
+  const bodies = [];
+  let calls = 0;
+  const flaky = async (url, options) => {
+    calls += 1;
+    bodies.push(JSON.parse(options.body));
+    if (calls === 1) return { ok: false, status: 429 };
+    return {
+      ok: true,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({ results: [{ id: 'bare', topics: ['signings'], entities: [] }] }),
+            },
+          },
+        ],
+      }),
+    };
+  };
+  const report = await enrichLabels(records, {
+    env: { LLM_API_KEY: 'k' },
+    fetchImpl: flaky,
+    retryDelayMs: 1,
+  });
+  assert.equal(calls, 2);
+  assert.equal(report.labelled, 1);
+  assert.equal(report.error, null);
+  assert.deepEqual(bodies[0].thinking, { type: 'disabled' });
+  assert.equal(bodies[0].model, 'glm-4.5-flash');
+  assert.equal(bodies[0].temperature, 0);
 });
 
 /* ---------- classification ---------- */

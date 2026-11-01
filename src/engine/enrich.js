@@ -5,23 +5,28 @@
  * This pass exists for the remainder: short captions such as "Week 1" that
  * carry real chatter but no keywords.
  *
+ * Settings mirror murmur's news model on purpose — same provider, same free
+ * flash model, same "thinking off" flag, same single retry on 429/5xx — so both
+ * projects behave the same way against the same account.
+ *
  * Hard rules, because a model in a measurement pipeline is dangerous:
  * - It only ever adds topic and entity ids that already exist in config.js.
  *   Anything else the model returns is discarded.
  * - It never sets a date, an engagement number, a URL or a headline. Those stay
  *   the measurement's own business.
- * - Any failure (no key, timeout, 4xx, malformed JSON) leaves the keyword labels
- *   exactly as they were. The build never depends on it.
- * - It runs once per build, over at most MAX_RECORDS records.
+ * - Any failure (no key, timeout, 4xx after retry, malformed JSON) leaves the
+ *   keyword labels exactly as they were. The build never depends on it.
  */
 import { ENTITY_BY_ID, TOPICS } from '../config.js';
 
 const DEFAULT_BASE = 'https://api.z.ai/api/paas/v4';
-const DEFAULT_MODEL = 'glm-4.6';
+const DEFAULT_MODEL = 'glm-4.5-flash';
 const MAX_RECORDS = 40;
+const BATCH_SIZE = 20;
 const MAX_TOPICS = 3;
 const MAX_ENTITIES = 4;
-const TIMEOUT_MS = 25_000;
+const TIMEOUT_MS = 60_000;
+const RETRY_DELAY_MS = 1_500;
 
 const TOPIC_IDS = TOPICS.map((topic) => topic.id);
 const ENTITY_IDS = Object.keys(ENTITY_BY_ID);
@@ -39,12 +44,12 @@ export function isUnlabelled(record) {
  * loopback interface for local testing.
  */
 export function enrichmentConfig(env = process.env) {
-  const key = typeof env.LLM_API_KEY === 'string' ? env.LLM_API_KEY.trim() : '';
+  const key = String(env.LLM_API_KEY || env.ZAI_API_KEY || env.NEWS_MODEL_API_KEY || '').trim();
   if (!key) return null;
 
   let base;
   try {
-    base = new URL(String(env.LLM_API_BASE || DEFAULT_BASE).trim());
+    base = new URL(String(env.LLM_API_BASE || env.NEWS_MODEL_BASE_URL || DEFAULT_BASE).trim());
   } catch {
     return null;
   }
@@ -54,7 +59,7 @@ export function enrichmentConfig(env = process.env) {
   return {
     key,
     base: base.href.replace(/\/$/, ''),
-    model: String(env.LLM_MODEL || DEFAULT_MODEL).trim(),
+    model: String(env.LLM_MODEL || env.NEWS_MODEL_NAME || DEFAULT_MODEL).trim(),
   };
 }
 
@@ -110,13 +115,66 @@ export function applyEnrichment(records, results) {
   return labelled;
 }
 
+function requestBody(config, items) {
+  const body = {
+    model: config.model,
+    temperature: 0,
+    stream: false,
+    response_format: { type: 'json_object' },
+    messages: [
+      { role: 'system', content: systemPrompt() },
+      { role: 'user', content: JSON.stringify({ items }) },
+    ],
+  };
+  // Z.ai's reasoning models spend tokens thinking unless it is switched off.
+  if (/z\.ai/i.test(config.base)) body.thinking = { type: 'disabled' };
+  return body;
+}
+
+async function postCompletion({ config, items, fetchImpl, signal }) {
+  const response = await fetchImpl(`${config.base}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${config.key}`,
+      'content-type': 'application/json',
+      accept: 'application/json',
+    },
+    body: JSON.stringify(requestBody(config, items)),
+    signal,
+  });
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      retryable: response.status === 429 || response.status >= 500,
+      error: `Provider returned HTTP ${response.status}.`,
+    };
+  }
+
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    return { ok: false, retryable: false, error: 'Provider returned malformed JSON.' };
+  }
+
+  const content = data?.choices?.[0]?.message?.content;
+  const text = typeof content === 'string' ? content : '';
+  if (!text) return { ok: false, retryable: false, error: 'Provider returned no message content.' };
+
+  return { ok: true, text };
+}
+
 /**
  * @param {object[]} records Records already labelled by classify.js.
- * @param {{env?: object, fetchImpl?: Function}} [options]
+ * @param {{env?: object, fetchImpl?: Function, retryDelayMs?: number}} [options]
  * @returns {Promise<{configured: boolean, requested: number, labelled: number,
  *   model: string|null, error: string|null}>}
  */
-export async function enrichLabels(records, { env = process.env, fetchImpl = fetch } = {}) {
+export async function enrichLabels(
+  records,
+  { env = process.env, fetchImpl = fetch, retryDelayMs = RETRY_DELAY_MS } = {},
+) {
   const config = enrichmentConfig(env);
   const targets = (records || []).filter(isUnlabelled).slice(0, MAX_RECORDS);
   const report = {
@@ -128,38 +186,32 @@ export async function enrichLabels(records, { env = process.env, fetchImpl = fet
   };
   if (!config || targets.length === 0) return report;
 
-  const items = targets.map((record) => ({ id: record.id, text: record.title }));
+  const all = targets.map((record) => ({ id: record.id, text: record.title }));
+  const batches = [];
+  for (let index = 0; index < all.length; index += BATCH_SIZE) batches.push(all.slice(index, index + BATCH_SIZE));
 
-  try {
-    const response = await fetchImpl(`${config.base}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${config.key}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: config.model,
-        temperature: 0,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: systemPrompt() },
-          { role: 'user', content: JSON.stringify({ items }) },
-        ],
-      }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-
-    if (!response.ok) {
-      report.error = `Provider returned HTTP ${response.status}.`;
-      return report;
+  const errors = [];
+  for (const batch of batches) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    try {
+      let result = await postCompletion({ config, items: batch, fetchImpl, signal: controller.signal });
+      if (!result.ok && result.retryable) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+        result = await postCompletion({ config, items: batch, fetchImpl, signal: controller.signal });
+      }
+      if (!result.ok) {
+        errors.push(result.error);
+        continue;
+      }
+      report.labelled += applyEnrichment(targets, parseEnrichment(result.text));
+    } catch (error) {
+      errors.push(error?.name === 'TimeoutError' || error?.name === 'AbortError' ? 'Request timed out.' : 'Request failed.');
+    } finally {
+      clearTimeout(timer);
     }
-
-    const data = await response.json();
-    const text = data?.choices?.[0]?.message?.content ?? '';
-    report.labelled = applyEnrichment(targets, parseEnrichment(text));
-    return report;
-  } catch (error) {
-    report.error = error?.name === 'TimeoutError' ? 'Request timed out.' : 'Request failed.';
-    return report;
   }
+
+  report.error = errors[0] ?? null;
+  return report;
 }

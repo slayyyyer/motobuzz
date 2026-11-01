@@ -113,7 +113,9 @@ Without it those sources report `not configured` on the page.
 label the records the keyword classifier could not place at all, such as a bare caption like "Week 1". It may only
 return topic and entity ids that already exist in `src/config.js`; everything else is discarded, and it never supplies
 a date, an engagement number or a URL. Without the key, or after any error, the keyword labels stand unchanged.
-`LLM_API_BASE` defaults to Z.ai's OpenAI-compatible endpoint and `LLM_MODEL` to `glm-4.6`.
+The settings mirror murmur's news model: Z.ai's OpenAI-compatible endpoint, `glm-4.5-flash`, Z.ai "thinking" disabled,
+a 60-second timeout and one retry on 429 or 5xx. `LLM_MODEL` and `LLM_API_BASE` override them, and `ZAI_API_KEY` or
+`NEWS_MODEL_API_KEY` are accepted in place of `LLM_API_KEY`.
 
 ## Local development
 
