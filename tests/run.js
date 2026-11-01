@@ -12,7 +12,9 @@ import {
   isMetadataRateLimited,
   parseMicrolinkPost,
   parseSearchCodes,
+  parseDiscoveryMedia,
   parseWebProfile,
+  discoveryConfig,
   sessionConfig,
   shortcodeFromPk,
 } from '../src/adapters/instagram.js';
@@ -333,6 +335,60 @@ test('accepts a bare session id or a pasted cookie header, and nothing else', ()
   assert.equal(sessionConfig({ INSTAGRAM_SESSIONID: 'csrftoken=abc; mid=def' }), null);
 });
 
+const DISCOVERY_PAYLOAD = {
+  business_discovery: {
+    username: 'kenroczen94',
+    followers_count: 1_738_601,
+    media: {
+      data: [
+        {
+          timestamp: '2026-10-31T18:04:13+0000',
+          like_count: 12_400,
+          comments_count: 87,
+          permalink: 'https://www.instagram.com/p/DfJu1kasgcb/',
+          media_type: 'VIDEO',
+          caption: 'Auckland',
+        },
+        {
+          timestamp: '2026-10-30T09:12:00+0000',
+          like_count: 9_100,
+          comments_count: 31,
+          permalink: 'https://www.instagram.com/p/DfES0kasgbd/',
+          media_type: 'IMAGE',
+        },
+      ],
+    },
+  },
+};
+
+test('reads business_discovery media, newest first, with exact timestamps', () => {
+  const profile = parseDiscoveryMedia(DISCOVERY_PAYLOAD);
+  assert.equal(profile.error, null);
+  assert.equal(profile.username, 'kenroczen94');
+  assert.equal(profile.followers, 1_738_601);
+  assert.equal(profile.posts.length, 2);
+  assert.equal(profile.posts[0].publishedAt, Date.parse('2026-10-31T18:04:13Z'));
+  assert.equal(profile.posts[0].likes, 12_400);
+  assert.equal(profile.posts[0].isVideo, true);
+  // Business Discovery sometimes omits the caption, so a missing one is normal.
+  assert.equal(profile.posts[1].caption, null);
+});
+
+test('a personal or missing handle is reported, not treated as empty', () => {
+  const personal = parseDiscoveryMedia({
+    error: { message: 'Invalid user id', code: 110, error_subcode: 2207013 },
+  });
+  assert.equal(personal.error, 'not_discoverable');
+  const expired = parseDiscoveryMedia({ error: { message: 'Invalid OAuth access token', code: 190 } });
+  assert.equal(expired.error, 'token_rejected');
+});
+
+test('needs both a token and the app owner IG user id', () => {
+  assert.equal(discoveryConfig({}), null);
+  assert.equal(discoveryConfig({ INSTAGRAM_TOKEN: 'tok' }), null);
+  assert.equal(discoveryConfig({ INSTAGRAM_BUSINESS_ID: '123' }), null);
+  assert.equal(discoveryConfig({ INSTAGRAM_TOKEN: 'tok', INSTAGRAM_BUSINESS_ID: '123' }).businessId, '123');
+});
 test('reads a post page for its publish time and engagement', () => {
   const html = `<html><head><meta property="og:description" content="13K likes, 46 comments - ausxsupercross on October 31, 2026: &quot;KENNY TAKES THE WIN&quot;. "></head><body><script>var d={"taken_at":1793496853};</script></body></html>`;
   const meta = extractPostMeta(html);

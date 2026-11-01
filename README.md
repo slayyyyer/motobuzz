@@ -130,6 +130,16 @@ credential: keep it in Actions secrets, never in the repo or a log, and treat si
 the source says so rather than quietly falling back. Passwords are deliberately not supported: a login attempt from a
 runner is exactly what triggers a challenge, and repeated attempts are what get an account flagged.
 
+**A Meta app is the steady route, when you are willing to register one.** With an app, an Instagram Business or
+Creator account holding a role on it, and that account linked to a Facebook Page, the Graph API endpoint
+`business_discovery` returns another public professional account's newest media in one call — exact `timestamp`,
+`like_count`, `comments_count` and `permalink`, with no scraping, no cookie and nothing for Instagram to rate
+limit by IP. Store the access token as `INSTAGRAM_TOKEN` and that account's own IG user id as
+`INSTAGRAM_BUSINESS_ID`; with either missing the route is skipped. Three limits are real: only Business or Creator
+targets are readable, so a personal rider account answers `not_discoverable` and the source says so rather than
+looking empty; captions are sometimes omitted by that endpoint, in which case the post is titled from its handle;
+and a long-lived token expires after about 60 days and cannot be refreshed once dead, so it needs rotating by hand.
+The same Standard-access token works without App Review while the account it belongs to holds a role on the app.
 **X is not scraped.** It still refuses anonymous reads. If you run your own RSS bridge (RSSHub, for example), set
 `MOTOBUZZ_BRIDGE_URL` for the build and the handles in `BRIDGE_HANDLES` are read through it, labelled as bridged.
 Without it those sources report `not configured` on the page.

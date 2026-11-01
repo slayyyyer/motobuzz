@@ -57,6 +57,8 @@ jobs:
           LLM_MODEL: ${{ vars.LLM_MODEL }}
           # Optional: a session cookie from a manual Instagram sign-in. No login is attempted here.
           INSTAGRAM_SESSIONID: ${{ secrets.INSTAGRAM_SESSIONID }}
+          INSTAGRAM_TOKEN: ${{ secrets.INSTAGRAM_TOKEN }}
+          INSTAGRAM_BUSINESS_ID: ${{ secrets.INSTAGRAM_BUSINESS_ID }}
         run: node scripts/build-buzz-cache.js
 
       - name: Assemble the static site

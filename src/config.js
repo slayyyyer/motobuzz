@@ -382,6 +382,33 @@ export const INSTAGRAM_SESSION = Object.freeze({
 });
 
 /**
+ * The Meta app route: one Graph API call per handle through `business_discovery`.
+ * It is the only route that is neither scraped nor tied to an IP, but it needs an
+ * access token belonging to an Instagram Business or Creator account that holds a
+ * role on the app, plus that account's own IG user id. See the README for setup.
+ */
+export const INSTAGRAM_DISCOVERY = Object.freeze({
+  host: 'https://graph.facebook.com',
+  version: 'v26.0',
+  /**
+   * Newest posts kept per profile. Deliberately low: Business Discovery sits on
+   * Platform rate limits, roughly 200 calls an hour per app at one app user.
+   */
+  postsPerProfile: 4,
+  /** Public fields the IG Media node exposes through field expansion. */
+  fields: Object.freeze([
+    'timestamp',
+    'like_count',
+    'comments_count',
+    'permalink',
+    'media_type',
+    'caption',
+  ]),
+  /** Graph error codes: 190 is a dead token, 110/2207013 a handle it cannot see. */
+  errorCodes: Object.freeze({ tokenRejected: 190, notDiscoverable: 110, notFoundSubcode: 2207013 }),
+});
+
+/**
  * Optional operator-run RSS bridge (a self-hosted RSSHub, for example) for X,
  * which still refuses anonymous reads. Nothing is fetched from it unless
  * MOTOBUZZ_BRIDGE_URL is set for the build.
