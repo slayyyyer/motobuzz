@@ -7,6 +7,13 @@ import assert from 'node:assert/strict';
 import { parseFeed, parseDate } from '../src/adapters/feed.js';
 import { extractChannelVideos } from '../src/adapters/youtube.js';
 import { extractPostMeta, extractProfile, shortcodeFromPk } from '../src/adapters/instagram.js';
+import {
+  applyEnrichment,
+  enrichLabels,
+  enrichmentConfig,
+  isUnlabelled,
+  parseEnrichment,
+} from '../src/engine/enrich.js';
 import { isJunkTitle } from '../src/adapters/news.js';
 import { matchUpstream } from '../proxy/allowlist.js';
 import { classify } from '../src/engine/classify.js';
@@ -220,6 +227,80 @@ test('falls back to the earliest time stamp, and never invents a date', () => {
     '<html><body><time dateTime="2026-10-31T08:30:56.000Z">19h</time><time dateTime="2026-11-01T01:50:03.000Z">2h</time></body></html>';
   assert.equal(extractPostMeta(stamped).publishedAt, Date.parse('2026-10-31T08:30:56.000Z'));
   assert.equal(extractPostMeta('<html><body>nothing here</body></html>').publishedAt, null);
+});
+
+/* ---------- optional LLM enrichment ---------- */
+
+test('enrichment stays off without a key and refuses non-loopback http', () => {
+  assert.equal(enrichmentConfig({}), null);
+  assert.equal(enrichmentConfig({ LLM_API_KEY: 'k', LLM_API_BASE: 'http://api.example.com/v4' }), null);
+  assert.equal(enrichmentConfig({ LLM_API_KEY: 'k', LLM_API_BASE: 'not a url' }), null);
+  const https = enrichmentConfig({ LLM_API_KEY: 'k' });
+  assert.equal(https.model, 'glm-4.6');
+  assert.ok(https.base.startsWith('https://'));
+  const local = enrichmentConfig({ LLM_API_KEY: 'k', LLM_API_BASE: 'http://127.0.0.1:8799' });
+  assert.equal(local.base, 'http://127.0.0.1:8799');
+});
+
+test('parses fenced JSON and rejects rubbish', () => {
+  assert.equal(parseEnrichment('```json\n{"results":[{"id":"a"}]}\n```').length, 1);
+  assert.equal(parseEnrichment('[{"id":"b"}]').length, 1);
+  assert.deepEqual(parseEnrichment('not json at all'), []);
+});
+
+test('only ids that exist in config survive, and labelled records stay untouched', () => {
+  const records = [
+    { id: 'bare', title: 'Week 1', topics: [], entities: [] },
+    { id: 'sorted', title: 'KTM signs a rider', topics: ['signings'], entities: [] },
+  ];
+  const labelled = applyEnrichment(records, [
+    { id: 'bare', topics: ['signings', 'invented-topic'], entities: ['ken-roczen', 'invented-rider'] },
+    { id: 'sorted', topics: ['injury'], entities: ['ken-roczen'] },
+  ]);
+  assert.equal(labelled, 1);
+  assert.deepEqual(records[0].topics, ['signings']);
+  assert.deepEqual(records[0].entities, ['ken-roczen']);
+  assert.deepEqual(records[1].topics, ['signings']);
+});
+
+test('a failing provider leaves keyword labels exactly as they were', async () => {
+  const records = [{ id: 'bare', title: 'Week 1', topics: [], entities: [] }];
+  const failing = async () => ({ ok: false, status: 500 });
+  const report = await enrichLabels(records, { env: { LLM_API_KEY: 'k' }, fetchImpl: failing });
+  assert.equal(report.labelled, 0);
+  assert.match(report.error, /500/);
+  assert.deepEqual(records[0].topics, []);
+
+  const broken = async () => {
+    throw new Error('network down');
+  };
+  const second = await enrichLabels(records, { env: { LLM_API_KEY: 'k' }, fetchImpl: broken });
+  assert.equal(second.labelled, 0);
+  assert.equal(second.error, 'Request failed.');
+});
+
+test('a good reply labels bare records and nothing else', async () => {
+  const records = [
+    { id: 'bare', title: 'Week 1', topics: [], entities: [] },
+    { id: 'sorted', title: 'Team announcement', topics: ['signings'], entities: ['ktm'] },
+  ];
+  const fake = async () => ({
+    ok: true,
+    json: async () => ({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({ results: [{ id: 'bare', topics: ['signings'], entities: ['ken-roczen'] }] }),
+          },
+        },
+      ],
+    }),
+  });
+  const report = await enrichLabels(records, { env: { LLM_API_KEY: 'k' }, fetchImpl: fake });
+  assert.equal(report.requested, 1);
+  assert.equal(isUnlabelled(records[0]), false);
+  assert.deepEqual(records[0].topics, ['signings']);
+  assert.deepEqual(records[1].entities, ['ktm']);
 });
 
 /* ---------- classification ---------- */

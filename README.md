@@ -109,6 +109,12 @@ and were checked against the live pages: a wrong handle still answers 200, but a
 `MOTOBUZZ_BRIDGE_URL` for the build and the handles in `BRIDGE_HANDLES` are read through it, labelled as bridged.
 Without it those sources report `not configured` on the page.
 
+**The LLM pass is optional and cannot invent facts.** If `LLM_API_KEY` is set, one request per build asks a model to
+label the records the keyword classifier could not place at all, such as a bare caption like "Week 1". It may only
+return topic and entity ids that already exist in `src/config.js`; everything else is discarded, and it never supplies
+a date, an engagement number or a URL. Without the key, or after any error, the keyword labels stand unchanged.
+`LLM_API_BASE` defaults to Z.ai's OpenAI-compatible endpoint and `LLM_MODEL` to `glm-4.6`.
+
 ## Local development
 
 Requires Node 18.17 or newer. There is no install step and no dependencies.

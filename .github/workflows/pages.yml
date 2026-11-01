@@ -50,6 +50,10 @@ jobs:
           MOTOBUZZ_BRIDGE_URL: ${{ vars.MOTOBUZZ_BRIDGE_URL }}
           # Continuity: carry still-valid records across a failed source.
           PREVIOUS_CACHE_URL: ${{ vars.MOTOBUZZ_PUBLIC_URL }}
+          # Optional: labels for records the keyword classifier leaves bare. Absent key = no call.
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_API_BASE: ${{ vars.LLM_API_BASE }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
         run: node scripts/build-buzz-cache.js
 
       - name: Assemble the static site

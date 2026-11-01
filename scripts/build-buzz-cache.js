@@ -29,6 +29,7 @@ import { bridgeBase, bridgeSourceDefs, loadBridgeSource } from '../src/adapters/
 import { classify } from '../src/engine/classify.js';
 import { buildSnapshot, isEligible, stableId, urlKey } from '../src/engine/score.js';
 import { validateCache } from '../src/engine/validate.js';
+import { enrichLabels } from '../src/engine/enrich.js';
 import { titleKey } from '../src/lib/text.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -249,6 +250,9 @@ async function main() {
   const kept = ranked.slice(0, WINDOW.maxItems);
   const pruned = ranked.length - kept.length;
 
+  // Optional and fail-open: it can only add topic and entity ids from config.js.
+  const enrichment = await enrichLabels(kept);
+
   const snapshot = buildSnapshot(kept, { now });
 
   const items = snapshot.items;
@@ -300,6 +304,13 @@ async function main() {
       sourcesAttempted: sources.length,
       sourcesLive: liveSources,
       sourcesWithRecords: recordedSources,
+      enrichment: {
+        configured: enrichment.configured,
+        model: enrichment.model,
+        requested: enrichment.requested,
+        labelled: enrichment.labelled,
+        error: enrichment.error,
+      },
       duplicatesDropped: duplicates,
       recordsPruned: pruned,
       recordsRetained: retained.length,
@@ -343,6 +354,10 @@ async function main() {
   log(`  ${snapshot.buzz.headline}`);
   log(`  ${items.length} records written, ${duplicates} duplicates dropped, ${retained.length} carried from the previous cache`);
   log(`  wrote ${outPath}`);
+  if (enrichment.configured && enrichment.requested > 0) {
+    const detail = enrichment.error ? ` (${enrichment.error})` : '';
+    log(`  enrichment: ${enrichment.labelled}/${enrichment.requested} records labelled via ${enrichment.model}${detail}`);
+  }
   if (snapshotsSaved > 0) log(`  saved ${snapshotsSaved} Instagram page snapshots under data/social/`);
   log('');
 

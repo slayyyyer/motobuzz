@@ -458,6 +458,13 @@ function renderMethod(state) {
         <li>Built ${clockTime(cache.generatedAt, timeZone(state))} ${cache.site?.timezoneLabel || ''}, in ${build.durationMs} ms.</li>
         <li>${build.sourcesLive} of ${build.sourcesAttempted} sources answered on this run; ${build.sourcesWithRecords} produced records.</li>
         <li>${build.recordsKept} records kept, ${build.duplicatesDropped} duplicates dropped, ${build.recordsRetained} carried over from the previous snapshot.</li>
+        <li>${
+          build.enrichment?.configured
+            ? `LLM labels: ${build.enrichment.labelled} of ${build.enrichment.requested} unlabelled records (${esc(
+                build.enrichment.model || 'model',
+              )})${build.enrichment.error ? `, ${esc(build.enrichment.error)}` : ''}.`
+            : 'No LLM labels configured; topics come from the keyword lists only.'
+        }</li>
         <li>${build.relay ? 'Fetched through the allowlisted relay.' : 'Fetched directly from the runner.'} ${
           build.bridge ? 'A social bridge is configured for X.' : 'Instagram is read from public profile pages; X needs a bridge.'
         }</li>
