@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MotoBuzz — what the motocross world is talking about</title>
+    <meta
+      name="description"
+      content="MotoBuzz reads public motocross news, subreddits, and rider and brand channels once an hour, then shows what the sport is actually talking about."
+    />
+    <meta name="color-scheme" content="dark" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0c0f'/%3E%3Cpath d='M6 22l7-12 4 7 3-4 6 9z' fill='%23ff4d1f'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to the buzz</a>
+
+    <header class="masthead">
+      <div class="masthead-inner">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div>
+            <h1>MotoBuzz</h1>
+            <p class="tagline">What the motocross world is talking about right now.</p>
+          </div>
+        </div>
+        <div class="buildline">
+          <span id="cache-status" role="status" aria-live="polite">Loading the latest snapshot…</span>
+          <button id="refresh" class="ghost-button" type="button">Refresh</button>
+        </div>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="stage" aria-labelledby="buzz-heading">
+        <h2 id="buzz-heading" class="sr-only">Current buzz</h2>
+
+        <div class="gauge-wrap">
+          <svg
+            class="gauge"
+            id="gauge"
+            viewBox="0 0 200 118"
+            role="img"
+            aria-labelledby="gauge-title gauge-desc"
+          >
+            <title id="gauge-title">Buzz meter</title>
+            <desc id="gauge-desc">The buzz meter is waiting for a snapshot.</desc>
+            <path class="gauge-track" d="M20 100 A 80 80 0 0 1 180 100" />
+            <path class="gauge-fill" id="gauge-fill" d="M20 100 A 80 80 0 0 1 180 100" />
+            <g id="gauge-ticks" class="gauge-ticks" aria-hidden="true"></g>
+            <g id="gauge-needle" class="gauge-needle" aria-hidden="true">
+              <line x1="100" y1="100" x2="100" y2="34" />
+              <circle cx="100" cy="100" r="4" />
+            </g>
+            <text class="gauge-end" x="20" y="114" text-anchor="middle">0</text>
+            <text class="gauge-end" x="180" y="114" text-anchor="middle">100</text>
+          </svg>
+
+          <p class="score-line">
+            <span class="score" id="score">--</span><span class="score-out">/100</span>
+          </p>
+          <p class="band" id="band" aria-live="polite">No signal yet</p>
+        </div>
+
+        <div class="stage-copy">
+          <p class="headline" id="headline">Waiting for the first snapshot from the build.</p>
+          <p class="headline-basis" id="headline-basis"></p>
+
+          <ul class="meta-strip" id="meta-strip"></ul>
+
+          <div class="history">
+            <div class="history-head">
+              <span>Chatter per hour, last 24 hours</span>
+              <span id="history-note" class="muted"></span>
+            </div>
+            <div class="history-bars" id="history-bars" role="img" aria-label="Hourly chatter over the last 24 hours"></div>
+          </div>
+
+          <p class="since-last" id="since-last"></p>
+        </div>
+      </section>
+
+      <div class="columns">
+        <section class="panel" aria-labelledby="threads-heading">
+          <div class="panel-head">
+            <h2 id="threads-heading">What's making noise</h2>
+            <p class="panel-sub">Themes ranked by how much fresh attention they are holding.</p>
+          </div>
+          <ul class="threads" id="threads"></ul>
+        </section>
+
+        <section class="panel" aria-labelledby="heat-heading">
+          <div class="panel-head">
+            <h2 id="heat-heading">Rider and brand heat</h2>
+            <p class="panel-sub">Riders, brands, and teams ranked by weighted mentions across every source.</p>
+          </div>
+          <div class="heat" id="heat"></div>
+        </section>
+      </div>
+
+      <div class="columns">
+        <section class="panel" aria-labelledby="where-heading">
+          <div class="panel-head">
+            <h2 id="where-heading">Where the buzz is</h2>
+            <p class="panel-sub">How the chatter splits between the American series and the world championship.</p>
+          </div>
+          <div id="where"></div>
+        </section>
+
+        <section class="panel" aria-labelledby="sources-heading">
+          <div class="panel-head">
+            <h2 id="sources-heading">Sources</h2>
+            <p class="panel-sub">Every input, with its state on the last build.</p>
+          </div>
+          <div id="sources"></div>
+        </section>
+      </div>
+
+      <details class="panel details-panel" id="explore-panel" open>
+        <summary>
+          <span>Explore the buzz</span>
+          <span class="summary-note" id="explore-count"></span>
+        </summary>
+
+        <div class="filters" role="group" aria-label="Filter the feed">
+          <button class="chip-button" type="button" data-kind="all" aria-pressed="true">All</button>
+          <button class="chip-button" type="button" data-kind="news" aria-pressed="false">News</button>
+          <button class="chip-button" type="button" data-kind="social" aria-pressed="false">Social</button>
+          <label class="filter-select">
+            <span class="sr-only">Filter by topic</span>
+            <select id="topic-filter"></select>
+          </label>
+          <label class="filter-search">
+            <span class="sr-only">Search records</span>
+            <input id="feed-search" type="search" placeholder="Search titles, riders, brands…" autocomplete="off" />
+          </label>
+        </div>
+
+        <ol class="feed" id="feed"></ol>
+        <p class="feed-empty" id="feed-empty" hidden>Nothing matches those filters.</p>
+        <button class="ghost-button load-more" id="load-more" type="button" hidden>Show more</button>
+      </details>
+
+      <details class="panel details-panel" id="method-panel">
+        <summary>
+          <span>How this is calculated</span>
+          <span class="summary-note">No model, no mood, no invented facts</span>
+        </summary>
+        <div id="method"></div>
+      </details>
+    </main>
+
+    <footer class="footer">
+      <p>
+        MotoBuzz measures published chatter. It is not a claim about what is true, important, or popular in the sport, and
+        it never infers an injury, a signing, or a result that a source did not publish.
+      </p>
+      <p class="muted">
+        No accounts, no trackers, no cookies, no third-party scripts. The page reads one same-origin JSON snapshot built
+        hourly by GitHub Actions and talks to nothing else.
+      </p>
+    </footer>
+
+    <noscript>
+      <p class="noscript">MotoBuzz needs JavaScript to read the hourly snapshot. The JSON itself is at ./data/buzz-cache.json.</p>
+    </noscript>
+
+    <script type="module" src="./src/app/main.js"></script>
+  </body>
+</html>

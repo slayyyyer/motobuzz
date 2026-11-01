@@ -1,0 +1,494 @@
+/**
+ * The test suite. Node's built-in assertions and this file's own runner; no
+ * dependencies, no fixtures on disk. Run with `npm test`.
+ */
+import assert from 'node:assert/strict';
+
+import { parseFeed, parseDate } from '../src/adapters/feed.js';
+import { extractChannelVideos } from '../src/adapters/youtube.js';
+import { isJunkTitle } from '../src/adapters/news.js';
+import { matchUpstream } from '../proxy/allowlist.js';
+import { classify } from '../src/engine/classify.js';
+import {
+  buildSnapshot,
+  engagementFactor,
+  isEligible,
+  recencyFactor,
+  stableId,
+  urlKey,
+} from '../src/engine/score.js';
+import { validateCache } from '../src/engine/validate.js';
+import {
+  decodeEntities,
+  httpsUrl,
+  normalizeForMatch,
+  parseCount,
+  parseRelativeTime,
+  stripTags,
+  titleKey,
+  truncate,
+} from '../src/lib/text.js';
+import { BUZZ, DECAY, WINDOW } from '../src/config.js';
+
+const tests = [];
+const test = (name, fn) => tests.push({ name, fn });
+
+const NOW = Date.parse('2026-11-01T12:00:00Z');
+const HOUR = 3_600_000;
+
+/* ---------- text ---------- */
+
+test('decodes named and numeric entities', () => {
+  assert.equal(decodeEntities('Ken &amp; Jett&#39;s &#x2014; win'), "Ken & Jett's — win");
+  assert.equal(decodeEntities('&unknown; stays'), '&unknown; stays');
+});
+
+test('strips tags and CDATA, collapses whitespace', () => {
+  assert.equal(stripTags('<![CDATA[<p>Hello <b>world</b></p>]]>'), 'Hello world');
+  assert.equal(stripTags('<div>a\n\n  b</div>'), 'a b');
+});
+
+test('normalizes diacritics and punctuation for matching', () => {
+  assert.equal(normalizeForMatch('Simon Längenfelder'), 'simon langenfelder');
+  assert.equal(normalizeForMatch('MXGP: Round 18!'), 'mxgp round 18');
+});
+
+test('title keys ignore case and punctuation', () => {
+  assert.equal(titleKey('KTM SIGNS A Deal!'), titleKey('ktm signs a  deal'));
+});
+
+test('only https urls survive', () => {
+  assert.equal(httpsUrl('http://example.com/a'), null);
+  assert.equal(httpsUrl('javascript:alert(1)'), null);
+  assert.equal(httpsUrl('https://example.com/a'), 'https://example.com/a');
+  assert.equal(httpsUrl('not a url'), null);
+});
+
+test('truncate keeps the limit', () => {
+  assert.equal(truncate('abcdef', 4).length, 4);
+  assert.equal(truncate('abc', 10), 'abc');
+});
+
+test('parseCount reads compact and worded counts', () => {
+  assert.equal(parseCount('25K'), 25_000);
+  assert.equal(parseCount('1.2M views'), 1_200_000);
+  assert.equal(parseCount('25 thousand views'), 25_000);
+  assert.equal(parseCount('812 views'), 812);
+  assert.equal(parseCount(''), null);
+});
+
+test('parseRelativeTime reads long and compact forms', () => {
+  assert.equal(NOW - parseRelativeTime('2d ago', NOW), 2 * 24 * HOUR);
+  assert.equal(NOW - parseRelativeTime('3 hours ago', NOW), 3 * HOUR);
+  assert.equal(NOW - parseRelativeTime('Streamed 12m ago', NOW), 12 * 60_000);
+  assert.equal(NOW - parseRelativeTime('1 week ago', NOW), 7 * 24 * HOUR);
+  assert.equal(parseRelativeTime('yesterday', NOW), null);
+});
+
+/* ---------- feed parsing ---------- */
+
+const RSS = `<?xml version="1.0"?><rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">
+<channel><title>Test</title>
+<item><title><![CDATA[Ken Roczen signs with Suzuki]]></title>
+<link>https://www.supercrosslive.com/2026/10/roczen-suzuki</link>
+<pubDate>Fri, 30 Oct 2026 13:39:46 +0000</pubDate>
+<description><![CDATA[<p>Two more years.</p>]]></description></item>
+<item><title>Second story</title><link>https://example.com/two</link>
+<dc:date>2026-10-31T08:00:00Z</dc:date></item>
+</channel></rss>`;
+
+const ATOM = `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><title>Sub</title>
+<entry><title>Top post</title><link rel="alternate" href="https://www.reddit.com/r/Motocross/comments/x/top_post/" />
+<updated>2026-10-31T09:00:00Z</updated><content type="html"><![CDATA[<p>Body text</p>]]></content></entry>
+</feed>`;
+
+test('parses RSS items with dates', () => {
+  const parsed = parseFeed(RSS);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.kind, 'rss');
+  assert.equal(parsed.items.length, 2);
+  assert.equal(parsed.items[0].title, 'Ken Roczen signs with Suzuki');
+  assert.equal(parsed.items[0].publishedAt, Date.parse('2026-10-30T13:39:46Z'));
+  assert.equal(parsed.items[1].publishedAt, Date.parse('2026-10-31T08:00:00Z'));
+});
+
+test('parses Atom entries and alternate links', () => {
+  const parsed = parseFeed(ATOM);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.kind, 'atom');
+  assert.equal(parsed.items[0].link, 'https://www.reddit.com/r/Motocross/comments/x/top_post/');
+  assert.equal(parsed.items[0].summary, 'Body text');
+});
+
+test('an HTML error page is malformed, not empty', () => {
+  const parsed = parseFeed('<html><body>404</body></html>');
+  assert.equal(parsed.ok, false);
+  assert.match(parsed.error, /HTML/i);
+});
+
+test('an empty feed is empty, not malformed', () => {
+  const parsed = parseFeed('<?xml version="1.0"?><rss version="2.0"><channel><title>t</title></channel></rss>');
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.isEmpty, true);
+});
+
+test('unparseable dates come back null instead of now', () => {
+  assert.equal(parseDate('sometime last week'), null);
+  assert.equal(parseDate(''), null);
+});
+
+/* ---------- youtube ---------- */
+
+const CHANNEL_HTML = `<html><body><script>var x = {"richItemRenderer":{"content":{"lockupViewModel":{
+"contentImage":{"thumbnailViewModel":{"image":{"sources":[{"url":"https://i.ytimg.com/vi/VYr6C6OWNA0/hq.jpg"}]}}},
+"contentId":"VYr6C6OWNA0","contentType":"LOCKUP_CONTENT_TYPE_VIDEO",
+"metadata":{"lockupMetadataViewModel":{"title":{"content":"Testing the 2027 bike"},
+"metadata":{"contentMetadataViewModel":{"metadataRows":[{"metadataParts":[
+{"text":{"content":"25K"},"accessibilityLabel":"25 thousand views"},
+{"text":{"content":"2d ago"},"accessibilityLabel":"2 days ago"}]}]}}}}}}}};</script></body></html>`;
+
+test('extracts channel videos from the page JSON', () => {
+  const videos = extractChannelVideos(CHANNEL_HTML, NOW);
+  assert.equal(videos.length, 1);
+  assert.equal(videos[0].id, 'VYr6C6OWNA0');
+  assert.equal(videos[0].title, 'Testing the 2027 bike');
+  assert.equal(videos[0].views, 25_000);
+  assert.equal(videos[0].publishedAt, NOW - 2 * 24 * HOUR);
+});
+
+test('a page with no entries yields nothing rather than throwing', () => {
+  assert.deepEqual(extractChannelVideos('<html><body>nope</body></html>', NOW), []);
+});
+
+/* ---------- classification ---------- */
+
+test('classifies a signing story and finds the rider', () => {
+  const labels = classify({ title: 'Ken Roczen signs a two-year extension with Suzuki', summary: null });
+  assert.ok(labels.topics.includes('signings'));
+  assert.ok(labels.entities.includes('ken-roczen'));
+  assert.ok(labels.entities.includes('suzuki'));
+});
+
+test('classifies an injury story', () => {
+  const labels = classify({ title: 'Haiden Deegan out after wrist surgery', summary: null });
+  assert.ok(labels.topics.includes('injury'));
+  assert.ok(labels.entities.includes('haiden-deegan'));
+});
+
+test('does not match a keyword inside a larger word', () => {
+  const labels = classify({ title: 'Designer graphics kit released for the 2027 model', summary: null });
+  assert.ok(!labels.topics.includes('signings'));
+});
+
+test('ambiguous surnames are only matched as full names', () => {
+  const wrong = classify({ title: 'Cooper Webb takes the win in Anaheim', summary: null });
+  assert.ok(wrong.entities.includes('cooper-webb'));
+  assert.ok(!wrong.entities.includes('justin-cooper'));
+
+  const bare = classify({ title: 'Martin leads the points standings', summary: null });
+  assert.ok(!bare.entities.includes('jeremy-martin'));
+});
+
+test('regions split American and world series', () => {
+  assert.equal(classify({ title: 'Anaheim 1 Supercross preview', summary: null }).region, 'us');
+  assert.equal(classify({ title: 'MXGP of Kegums results', summary: null }).region, 'world');
+});
+
+test('topic labels resolve for every topic in config', () => {
+  for (const topic of ['signings', 'injury', 'results', 'schedule', 'tech', 'business', 'safety', 'culture']) {
+    const labels = classify({ title: `Generic ${topic} placeholder`, summary: null });
+    assert.ok(Array.isArray(labels.topics));
+  }
+});
+
+test('does not read "returns to Auckland" as an injury', () => {
+  const labels = classify({ title: 'Roczen and Davies Dominate as AUSX Returns to Auckland', summary: null });
+  assert.ok(!labels.topics.includes('injury'));
+});
+
+test('drops live-stream spam headlines but keeps real ones', () => {
+  assert.equal(isJunkTitle('『LIVeSTREAMS』 Boost Mobile AUSX Supercross 2026 today Live Updates!'), true);
+  assert.equal(isJunkTitle('LIVE STREAM: AUSX Auckland round two'), true);
+  assert.equal(isJunkTitle('Ken Roczen Extends with Suzuki for 2027'), false);
+  assert.equal(isJunkTitle('How to watch: Herlings in the Japan finale'), false);
+});
+
+/* ---------- scoring ---------- */
+
+function record(overrides = {}) {
+  return {
+    id: stableId(`x|${overrides.url || 'https://example.com/a'}`),
+    sourceId: 'test',
+    kind: 'news',
+    title: 'A headline',
+    summary: null,
+    url: 'https://example.com/a',
+    publisher: 'Test',
+    publisherUrl: 'https://example.com',
+    channel: null,
+    publishedAt: NOW - HOUR,
+    fetchedAt: NOW,
+    engagement: null,
+    engagementLabel: null,
+    replies: null,
+    topics: ['results'],
+    entities: ['eli-tomac'],
+    region: 'us',
+    ...overrides,
+  };
+}
+
+test('recency decays by half over one half-life', () => {
+  const fresh = recencyFactor({ kind: 'news', publishedAt: NOW }, NOW);
+  const old = recencyFactor({ kind: 'news', publishedAt: NOW - DECAY.news.halfLifeHours * HOUR }, NOW);
+  assert.ok(Math.abs(fresh - 1) < 1e-9);
+  assert.ok(Math.abs(old - 0.5) < 1e-6);
+});
+
+test('social engagement raises energy but with a log scale', () => {
+  const quiet = engagementFactor({ kind: 'social', engagement: 1, replies: 0 });
+  const loud = engagementFactor({ kind: 'social', engagement: 500_000, replies: 0 });
+  assert.ok(loud > quiet);
+  assert.ok(loud < 12, 'a viral post cannot dominate without bound');
+  assert.equal(engagementFactor({ kind: 'news', engagement: 999_999 }), 1);
+});
+
+test('eligibility enforces per-kind maximum age', () => {
+  assert.ok(isEligible(record({ publishedAt: NOW - 47 * HOUR }), NOW));
+  assert.ok(!isEligible(record({ publishedAt: NOW - 49 * HOUR }), NOW));
+  assert.ok(isEligible(record({ kind: 'social', publishedAt: NOW - 60 * HOUR }), NOW));
+  assert.ok(!isEligible(record({ publishedAt: NOW + 5 * HOUR }), NOW));
+});
+
+test('an empty room scores zero and says so', () => {
+  const snapshot = buildSnapshot([], { now: NOW });
+  assert.equal(snapshot.buzz.score, 0);
+  assert.equal(snapshot.buzz.activeItems, 0);
+  // With no records, the page must say it has nothing rather than guess.
+  assert.match(snapshot.buzz.headline, /No signal|No sources answered/i);
+});
+
+test('the score rises with energy and never exceeds 100', () => {
+  const few = buildSnapshot([record()], { now: NOW });
+  const many = buildSnapshot(
+    Array.from({ length: 60 }, (_, index) =>
+      record({ url: `https://example.com/${index}`, title: `Story ${index}`, publishedAt: NOW - index * 60_000 }),
+    ),
+    { now: NOW },
+  );
+  assert.ok(momentumSanity(few));
+  assert.ok(many.buzz.score > few.buzz.score);
+  assert.ok(many.buzz.score <= 100);
+  assert.ok(many.buzz.energy > few.buzz.energy);
+});
+
+function momentumSanity(snapshot) {
+  return Number.isFinite(snapshot.buzz.momentum) && snapshot.buzz.momentum > 0;
+}
+
+test('the score saturates instead of growing without bound', () => {
+  const huge = buildSnapshot(
+    Array.from({ length: 380 }, (_, index) =>
+      record({ url: `https://example.com/h${index}`, title: `Story ${index}`, publishedAt: NOW - index * 1000 }),
+    ),
+    { now: NOW },
+  );
+  assert.ok(huge.buzz.score <= 100);
+  assert.ok(huge.buzz.score > 90);
+});
+
+test('momentum reports rising when the last six hours dominate', () => {
+  const rising = buildSnapshot(
+    Array.from({ length: 12 }, (_, index) =>
+      record({ url: `https://example.com/r${index}`, title: `Recent ${index}`, publishedAt: NOW - index * 60_000 }),
+    ),
+    { now: NOW },
+  );
+  assert.equal(rising.buzz.momentumLabel, 'rising');
+});
+
+test('momentum reports cooling when only older records exist', () => {
+  const cooling = buildSnapshot(
+    Array.from({ length: 12 }, (_, index) =>
+      record({ url: `https://example.com/c${index}`, title: `Older ${index}`, publishedAt: NOW - (10 + index) * HOUR }),
+    ),
+    { now: NOW },
+  );
+  assert.equal(cooling.buzz.momentumLabel, 'cooling');
+});
+
+test('buckets sum to the chatter they represent', () => {
+  const snapshot = buildSnapshot(
+    Array.from({ length: 5 }, (_, index) =>
+      record({ url: `https://example.com/b${index}`, title: `Story ${index}`, publishedAt: NOW - index * HOUR }),
+    ),
+    { now: NOW },
+  );
+  assert.equal(snapshot.buzz.buckets.length, WINDOW.bucketCount);
+  const items = snapshot.buzz.buckets.reduce((sum, bucket) => sum + bucket.items, 0);
+  assert.equal(items, 5);
+});
+
+test('entities are ranked and carry a trend and series', () => {
+  const snapshot = buildSnapshot(
+    [
+      record({ url: 'https://example.com/1', entities: ['eli-tomac'], title: 'Tomac wins' }),
+      record({ url: 'https://example.com/2', entities: ['eli-tomac'], title: 'Tomac again' }),
+      record({ url: 'https://example.com/3', entities: ['ktm'], title: 'KTM news' }),
+    ],
+    { now: NOW },
+  );
+  assert.equal(snapshot.entities[0].id, 'eli-tomac');
+  assert.equal(snapshot.entities[0].mentions, 2);
+  assert.equal(snapshot.entities[0].series.length, 12);
+  assert.ok(['rising', 'cooling', 'steady'].includes(snapshot.entities[0].trend));
+});
+
+test('region shares are fractions of the total', () => {
+  const snapshot = buildSnapshot(
+    [
+      record({ url: 'https://example.com/1', region: 'us' }),
+      record({ url: 'https://example.com/2', region: 'world' }),
+    ],
+    { now: NOW },
+  );
+  assert.equal(snapshot.region.us, 0.5);
+  assert.equal(snapshot.region.world, 0.5);
+});
+
+test('buzz bands cover the whole scale', () => {
+  assert.equal(BUZZ.bands[0].min, 0);
+  assert.deepEqual(
+    BUZZ.bands.map((band) => band.min),
+    [...BUZZ.bands.map((band) => band.min)].sort((a, b) => a - b),
+  );
+});
+
+test('urlKey drops tracking parameters and trailing slashes', () => {
+  assert.equal(
+    urlKey('https://Example.com/news/story/?utm_source=x&id=7#frag'),
+    urlKey('https://example.com/news/story?id=7'),
+  );
+});
+
+/* ---------- validation ---------- */
+
+function validCache(overrides = {}) {
+  const snapshot = buildSnapshot([record()], { now: NOW });
+  return {
+    schemaVersion: 1,
+    generatedAt: NOW,
+    site: { name: 'MotoBuzz', timezone: 'America/New_York' },
+    build: { durationMs: 10 },
+    buzz: snapshot.buzz,
+    threads: snapshot.threads,
+    entities: snapshot.entities,
+    region: snapshot.region,
+    sources: [
+      {
+        sourceId: 'test',
+        label: 'Test',
+        kind: 'news',
+        status: 'live',
+        fetchedAt: NOW,
+        recordCount: 1,
+      },
+    ],
+    items: snapshot.items,
+    ...overrides,
+  };
+}
+
+test('accepts a well-formed cache', () => {
+  const result = validateCache(validCache(), { now: NOW });
+  assert.equal(result.ok, true);
+  assert.equal(result.cache.items.length, 1);
+});
+
+test('rejects an unknown schema version outright', () => {
+  const result = validateCache(validCache({ schemaVersion: 99 }), { now: NOW });
+  assert.equal(result.ok, false);
+  assert.equal(result.cache, null);
+});
+
+test('rejects a cache with a nonsense generation time', () => {
+  assert.equal(validateCache(validCache({ generatedAt: NOW + 48 * HOUR }), { now: NOW }).ok, false);
+  assert.equal(validateCache(validCache({ generatedAt: 'soon' }), { now: NOW }).ok, false);
+});
+
+test('drops individual bad records and keeps the good ones', () => {
+  const cache = validCache();
+  cache.items.push({ ...cache.items[0], url: 'http://insecure.example.com/x' });
+  cache.items.push({ ...cache.items[0], title: '' });
+  const result = validateCache(cache, { now: NOW });
+  assert.equal(result.ok, true);
+  assert.equal(result.cache.items.length, 1);
+  assert.equal(result.droppedRecords, 2);
+});
+
+test('rejects a cache whose every record is unusable', () => {
+  const cache = validCache();
+  cache.items = [{ title: 'no url' }];
+  assert.equal(validateCache(cache, { now: NOW }).ok, false);
+});
+
+test('rejects a cache with no buzz block', () => {
+  const cache = validCache();
+  delete cache.buzz;
+  assert.equal(validateCache(cache, { now: NOW }).ok, false);
+});
+
+test('unknown source statuses are discarded', () => {
+  const cache = validCache();
+  cache.sources.push({ sourceId: 'ghost', status: 'haunted' });
+  const result = validateCache(cache, { now: NOW });
+  assert.equal(result.cache.sources.length, 1);
+});
+
+/* ---------- relay allowlist ---------- */
+
+test('allows known upstreams', () => {
+  assert.equal(matchUpstream('https://www.supercrosslive.com/rss').allowed, true);
+  assert.equal(matchUpstream('https://news.google.com/rss/search?q=motocross').allowed, true);
+  assert.equal(matchUpstream('https://www.reddit.com/r/Motocross/.rss').allowed, true);
+  assert.equal(matchUpstream('https://www.youtube.com/@vitalmx/videos').allowed, true);
+});
+
+test('refuses everything else', () => {
+  assert.equal(matchUpstream('http://www.supercrosslive.com/rss').allowed, false);
+  assert.equal(matchUpstream('https://evil.example.com/rss').allowed, false);
+  assert.equal(matchUpstream('https://127.0.0.1/rss').allowed, false);
+  assert.equal(matchUpstream('https://user:pass@www.reddit.com/r/x/.rss').allowed, false);
+  assert.equal(matchUpstream('https://www.reddit.com:8443/r/x/.rss').allowed, false);
+  assert.equal(matchUpstream('https://www.reddit.com/r/../../etc/passwd').allowed, false);
+});
+
+test('a configured bridge origin is the only extra allowance', () => {
+  const bridge = new URL('https://bridge.internal.example');
+  assert.equal(matchUpstream('https://bridge.internal.example/instagram/user/x', bridge).allowed, true);
+  assert.equal(matchUpstream('https://bridge.internal.example/instagram/user/x').allowed, false);
+});
+
+/* ---------- runner ---------- */
+
+let passed = 0;
+const failures = [];
+
+for (const { name, fn } of tests) {
+  try {
+    await fn();
+    passed += 1;
+    process.stdout.write(`  ok   ${name}\n`);
+  } catch (error) {
+    failures.push({ name, error });
+    process.stdout.write(`  FAIL ${name}\n`);
+  }
+}
+
+process.stdout.write(`\n${passed}/${tests.length} passing\n`);
+if (failures.length > 0) {
+  for (const failure of failures) {
+    process.stdout.write(`\n${failure.name}\n${failure.error?.stack || failure.error}\n`);
+  }
+  process.exit(1);
+}

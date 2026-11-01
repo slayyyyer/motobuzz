@@ -1,0 +1,82 @@
+name: Buzz cache and Pages
+
+on:
+  schedule:
+    # GitHub cron is UTC. Offset from the top of the hour to avoid the busiest minute.
+    - cron: '23 * * * *'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Test
+        run: npm test
+
+      - name: Start the allowlisted relay
+        env:
+          PORT: 8080
+        run: |
+          node proxy/server.js > relay.log 2>&1 &
+          echo $! > .relay.pid
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/healthz > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat relay.log
+          exit 1
+
+      - name: Build the hourly cache
+        env:
+          MOTOBUZZ_RELAY: http://127.0.0.1:8080
+          # Optional: a self-hosted RSS bridge for Instagram and X. Leave unset to skip them.
+          MOTOBUZZ_BRIDGE_URL: ${{ vars.MOTOBUZZ_BRIDGE_URL }}
+          # Continuity: carry still-valid records across a failed source.
+          PREVIOUS_CACHE_URL: ${{ vars.MOTOBUZZ_PUBLIC_URL }}
+        run: node scripts/build-buzz-cache.js
+
+      - name: Assemble the static site
+        run: |
+          mkdir -p dist/data
+          cp index.html styles.css dist/
+          cp -R src dist/src
+          cp data/buzz-cache.json dist/data/
+          touch dist/.nojekyll
+
+      - name: Stop the relay
+        if: always()
+        run: |
+          if [ -f .relay.pid ]; then kill "$(cat .relay.pid)" || true; fi
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

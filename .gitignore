@@ -1,0 +1,9 @@
+data/
+dist/
+node_modules/
+*.log
+.relay.pid
+.freebuff/
+
+# the GitHub clone of this repository itself
+motobuzz/

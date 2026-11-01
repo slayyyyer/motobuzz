@@ -1,0 +1,17 @@
+{
+  "name": "motobuzz",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A running readout of what the motocross world is talking about, built hourly by GitHub Actions.",
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "start": "node proxy/server.js",
+    "dev": "node proxy/server.js",
+    "cache": "node scripts/build-buzz-cache.js",
+    "cache:local": "node scripts/build-buzz-cache.js --relay http://127.0.0.1:8080",
+    "test": "node tests/run.js"
+  }
+}
