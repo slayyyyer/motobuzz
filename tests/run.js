@@ -47,7 +47,7 @@ import {
   titleKey,
   truncate,
 } from '../src/lib/text.js';
-import { BUZZ, DECAY, WINDOW } from '../src/config.js';
+import { BUZZ, DECAY, INSTAGRAM_CAPTURE, REDDIT_CAPTURE, WINDOW } from '../src/config.js';
 
 const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
@@ -411,7 +411,7 @@ test('a committed local capture stands in when the runner cannot read the page',
   // A handle with no entry falls through to the live routes instead of inventing data.
   assert.equal(captureRecordsFor(capture, { ...def, handle: 'someone-else' }, { now }), null);
   // Past INSTAGRAM_CAPTURE.maxAgeHours the capture is ignored entirely.
-  assert.equal(captureRecordsFor(capture, def, { now: now + 47 * 3_600_000 }), null);
+  assert.equal(captureRecordsFor(capture, def, { now: now + (INSTAGRAM_CAPTURE.maxAgeHours + 1) * 3_600_000 }), null);
 });
 
 test('a committed Reddit capture stands in when the feed is throttled', () => {
@@ -461,7 +461,7 @@ test('a committed Reddit capture stands in when the feed is throttled', () => {
   // A subreddit with no entry falls through to the live feed instead of inventing posts.
   assert.equal(redditCaptureRecordsFor(capture, { ...def, sub: 'Unknown' }, { now }), null);
   // Past REDDIT_CAPTURE.maxAgeHours the capture is ignored entirely.
-  assert.equal(redditCaptureRecordsFor(capture, def, { now: now + 48 * 3_600_000 }), null);
+  assert.equal(redditCaptureRecordsFor(capture, def, { now: now + (REDDIT_CAPTURE.maxAgeHours + 1) * 3_600_000 }), null);
 });
 
 /* ---------- optional LLM enrichment ---------- */

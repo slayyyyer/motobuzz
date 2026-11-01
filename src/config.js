@@ -394,8 +394,12 @@ export const INSTAGRAM_FALLBACK = Object.freeze({
 export const INSTAGRAM_CAPTURE = Object.freeze({
   /** Where the capture is committed; the build reads it from the checkout. */
   path: 'snapshots/instagram.json',
-  /** A capture older than this is ignored and the live routes run instead. */
-  maxAgeHours: 48,
+  /**
+   * A capture older than this is ignored and the live routes run instead. Four
+   * days, not two: the capture is made by hand, and a weekend gap should not
+   * throw away reads that are still recent enough to describe.
+   */
+  maxAgeHours: 96,
 });
 
 /**
@@ -405,7 +409,8 @@ export const INSTAGRAM_CAPTURE = Object.freeze({
  */
 export const REDDIT_CAPTURE = Object.freeze({
   path: 'snapshots/reddit.json',
-  maxAgeHours: 48,
+  /** Same four-day trust window as the Instagram capture. */
+  maxAgeHours: 96,
 });
 /**
  * An authenticated read of the same private profile endpoint Instagram's own
