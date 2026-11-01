@@ -103,15 +103,15 @@ route is the honest way to include them.
 **Instagram is read from the page it serves a crawler — and that page changed in 2026.** A logged-out browser still
 gets a login shell, but a crawler user agent is served a rendered page, with two catches found by testing it: the
 profile now arrives as `xig_user_by_username` and its timeline as `polaris_ordered_timeline_connection`, where each
-post carries its shortcode in `code` and no timestamp at all, and the page served to a signed-out crawler is stale —
-for the watched riders it offered ten posts from 2015. The adapter reads both the old and new container names, and
-each post's own page still supplies the exact `taken_at` epoch plus like and comment counts, so recent chatter needs
-the session cookie below. Handles live in `INSTAGRAM_PROFILES` and were checked against the live pages: a wrong
+post carries its shortcode in `code` and no timestamp at all. A signed-out crawler page is also not reliably current:
+one watched profile listed four recent posts, another offered ten from 2015. The adapter reads both the old and new
+container names, each post's own page supplies the exact `taken_at` epoch plus like and comment counts, and the newest
+media ids are read first. Handles live in `INSTAGRAM_PROFILES` and were checked against the live pages: a wrong
 handle still answers 200, but as a small account with zero posts.
 
-**When Instagram refuses the host, a coarse fallback takes over.** GitHub's runners get the login shell whatever the
-user agent, so for those hosts DuckDuckGo finds recent post permalinks and the microlink metadata API reads the post
-from its own infrastructure. That route is intentionally small — discovery runs every few hours, at most six metadata
+**When Instagram refuses the host, a coarse fallback takes over.** GitHub's runners are answered with `429` whatever
+the user agent — the profile reads as rate limited before any post is reached — so for those hosts DuckDuckGo finds
+recent post permalinks and the microlink metadata API reads the post from its own infrastructure. That route is intentionally small — discovery runs every few hours, at most six metadata
 calls and two posts per profile per run, and permalinks already seen are skipped — because the API's free tier is
 tiny. It also only knows the publish **day**, so those records are stamped at midday UTC with `dateBasis: "day"`
 instead of being presented as exact times. If both routes fail, the source reports `malformed` and the rest of the
@@ -125,8 +125,8 @@ string — the workflow passes it through untouched, and every cookie in it is s
 makes the session look like the browser that created it. The request also carries the `Sec-Fetch-*` set Instagram
 insists on: without those headers the same endpoint answers a bare `400 SecFetch Policy violation.` instead of JSON.
 A `challenge_required` cannot be cleared from the build — it needs a person in a browser, and retrying it
-programmatically is what escalates to a checkpoint — so the source reports it and moves on. It is a bearer credential: keep it in Actions secrets, never in the
-repo or a log, and treat signing out as revoking it. If Instagram answers `login_required` or `checkpoint_required`,
+programmatically is what escalates to a checkpoint — so the source reports it and moves on. It is a bearer
+credential: keep it in Actions secrets, never in the repo or a log, and treat signing out as revoking it. If Instagram answers `login_required` or `checkpoint_required`,
 the source says so rather than quietly falling back. Passwords are deliberately not supported: a login attempt from a
 runner is exactly what triggers a challenge, and repeated attempts are what get an account flagged.
 
