@@ -3,27 +3,6 @@
  *
  * Four routes, in order:
  *
- * 0. A Meta app reading `business_discovery`. The Graph API returns exact
- *    timestamps, likes and comments for any public Business or Creator account
- *    in one call per handle, with no scraping, no cookie and no IP reputation to
- *    manage, so it wins whenever a token is configured - see INSTAGRAM_DISCOVERY.
- *
- * 1. A stored session cookie. Instagram's own web app reads profiles through
- *    `web_profile_info`, which returns exact timestamps and engagement for a
- *    signed-in session in one request, so it wins whenever a cookie is set.
- *    The cookie is never obtained here - see INSTAGRAM_SESSION.
- *
- * 2. The profile page. A crawler user agent is served a rendered page with a
- *    timeline blob, and each post's own page carries an exact publish time plus
- *    its like and comment counts. No third party, though the signed-out page is
- *    not always current.
- *
- * 3. A fallback for hosts Instagram refuses (GitHub's runners are answered with
- *    429 whatever the user agent). DuckDuckGo finds recent post permalinks and
- *    the microlink metadata API reads one post from its own infrastructure. It
- *    is coarse: microlink reports the publish DAY, not the hour, so those
- *    records are stamped at midday UTC and marked `dateBasis: 'day'`.
- *
  * 0. A stored session cookie. Instagram's own web app reads profiles through
  *    `web_profile_info`, which returns exact timestamps and engagement for a
  *    signed-in session in one request, so it wins whenever one is configured.
@@ -34,7 +13,12 @@
  *    blob, and each post's own page carries an exact publish time plus its
  *    like/comment counts. This is the accurate route and needs no third party.
  *
- * 2. A fallback for hosts Instagram refuses (GitHub's runners get the login
+ * 2. A capture committed by `npm run instagram:capture`. A host that refuses a
+ *    runner usually serves an ordinary home connection the real page, so this
+ *    route carries exact times and counts from the last local scrape. It goes
+ *    just ahead of the coarse route, and only when the page could not be read.
+ *
+ * 3. A fallback for hosts Instagram refuses (GitHub's runners get the login
  *    shell whatever the user agent). DuckDuckGo finds recent post permalinks,
  *    and the microlink metadata API reads one post from its own infrastructure,
  *    which is not blocked. That route is coarse: microlink reports the publish
@@ -48,13 +32,13 @@ import {
   DECAY,
   INGEST,
   INSTAGRAM_CRAWLER_UA,
-  INSTAGRAM_DISCOVERY,
   INSTAGRAM_FALLBACK,
   INSTAGRAM_PROFILES,
   INSTAGRAM_SESSION,
 } from '../config.js';
 import { decodeEntities, httpsUrl, parseCount, truncate } from '../lib/text.js';
 import { fetchText, sleep } from './http.js';
+import { captureRecordsFor } from './instagram-capture.js';
 
 const BASE = 'https://www.instagram.com';
 const MAX_DEPTH = 40;
@@ -506,167 +490,6 @@ export async function loadInstagramFallback(def, ctx) {
  * forwards a fixed set of headers, and a session cookie should not be handed to
  * an intermediary anyway.
  */
-/**
- * The token and the app owner's own IG user id. Discovery is performed *as* that
- * account, so both are required; with either missing the route is skipped.
- */
-export function discoveryConfig(env = process.env) {
-  const token = String(env.INSTAGRAM_TOKEN || '').trim();
-  const businessId = String(env.INSTAGRAM_BUSINESS_ID || '').trim();
-  if (!token || !businessId) return null;
-  return { token, businessId };
-}
-
-/**
- * Read a `business_discovery` response. Graph reports every refusal as an error
- * object rather than an HTTP status, so the code decides the message: a dead
- * token, a handle it cannot see (personal, private, age-gated, or simply wrong -
- * Instagram does not say which), or anything else.
- */
-export function parseDiscoveryMedia(payload) {
-  const failure = payload?.error;
-  if (failure) {
-    const code = Number(failure.code);
-    const subcode = Number(failure.error_subcode);
-    const kind =
-      code === INSTAGRAM_DISCOVERY.errorCodes.tokenRejected
-        ? 'token_rejected'
-        : code === INSTAGRAM_DISCOVERY.errorCodes.notDiscoverable ||
-            subcode === INSTAGRAM_DISCOVERY.errorCodes.notFoundSubcode
-          ? 'not_discoverable'
-          : 'unknown';
-    return {
-      error: kind,
-      message: failure.error_user_msg || failure.message || null,
-      username: null,
-      followers: null,
-      posts: [],
-    };
-  }
-
-  const found = payload?.business_discovery;
-  if (!found) return { error: 'no_profile', message: null, username: null, followers: null, posts: [] };
-
-  const posts = [];
-  for (const item of found.media?.data ?? []) {
-    const permalink = httpsUrl(item.permalink);
-    const publishedAt = Date.parse(item.timestamp);
-    if (!permalink || !Number.isFinite(publishedAt)) continue;
-    posts.push({
-      permalink,
-      caption: typeof item.caption === 'string' ? item.caption : null,
-      isVideo: item.media_type === 'VIDEO',
-      publishedAt,
-      likes: Number.isFinite(item.like_count) ? item.like_count : null,
-      comments: Number.isFinite(item.comments_count) ? item.comments_count : null,
-    });
-  }
-  posts.sort((left, right) => right.publishedAt - left.publishedAt);
-
-  return {
-    error: null,
-    message: null,
-    username: typeof found.username === 'string' ? found.username : null,
-    followers: Number.isFinite(found.followers_count) ? found.followers_count : null,
-    posts,
-  };
-}
-
-/**
- * One Graph API call per handle, made directly: the token must not transit the
- * relay either. Errors arrive as HTTP 400 with a JSON body, so this reads the
- * response itself instead of fetchText, which would throw the body away.
- */
-export async function loadInstagramDiscovery(def, ctx) {
-  const { now = Date.now(), fetchedAt = now } = ctx;
-  const config = discoveryConfig();
-  if (!config) return { status: 'skipped', error: null, records: [], note: null, snapshot: null };
-
-  const fields = [
-    'followers_count',
-    'media_count',
-    `media.limit(${INSTAGRAM_DISCOVERY.postsPerProfile}){${INSTAGRAM_DISCOVERY.fields.join(",")}}`,
-  ].join(',');
-  const target =
-    `business_discovery.username(${encodeURIComponent(def.handle)}){${fields}}`;
-  const url =
-    `${INSTAGRAM_DISCOVERY.host}/${INSTAGRAM_DISCOVERY.version}/${encodeURIComponent(config.businessId)}` +
-    `?fields=${encodeURIComponent(target)}&access_token=${encodeURIComponent(config.token)}`;
-
-  const snapshot = {
-    handle: def.handle,
-    url: def.url,
-    username: null,
-    fullName: null,
-    followers: null,
-    biography: null,
-    via: 'Meta app (business_discovery)',
-    posts: [],
-  };
-
-  let payload = null;
-  try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(INGEST.instagramTimeoutMs) });
-    payload = JSON.parse(await response.text());
-  } catch (error) {
-    const reason = error?.name === 'TimeoutError' ? 'timed out' : 'request failed';
-    return { status: 'unavailable', error: `Graph API ${reason}.`, records: [], note: null, snapshot };
-  }
-
-  const profile = parseDiscoveryMedia(payload);
-  snapshot.username = profile.username;
-  snapshot.followers = profile.followers;
-
-  if (profile.error) {
-    const detail =
-      profile.error === 'token_rejected'
-        ? 'The Meta access token was rejected (expired or revoked).'
-        : profile.error === 'not_discoverable'
-          ? 'Instagram has no public Business or Creator account for this handle.'
-          : `Graph API refused the lookup${profile.message ? `: ${truncate(profile.message, 120)}` : ''}.`;
-    return { status: 'unavailable', error: detail, records: [], note: `business_discovery: ${profile.error}`, snapshot };
-  }
-
-  const records = [];
-  for (const post of profile.posts) {
-    if (records.length >= INSTAGRAM_DISCOVERY.postsPerProfile) break;
-    if (now - post.publishedAt > DECAY.social.maxAgeHours * 3_600_000) continue;
-
-    const caption = post.caption ? truncate(post.caption, INGEST.maxSummaryLength) : null;
-    snapshot.posts.push({
-      shortcode: post.permalink.split('/p/')[1]?.replace(/\/$/, '') ?? null,
-      caption,
-      publishedAt: post.publishedAt,
-      likes: post.likes,
-      comments: post.comments,
-      isVideo: post.isVideo,
-      dateBasis: 'exact',
-    });
-
-    records.push({
-      sourceId: def.id,
-      kind: 'social',
-      publisher: def.label,
-      publisherUrl: httpsUrl(def.homepage),
-      title: truncate(post.caption || `Instagram post by @${def.handle}`, INGEST.maxTitleLength),
-      summary: null,
-      url: post.permalink,
-      publishedAt: post.publishedAt,
-      fetchedAt,
-      engagement: post.likes,
-      engagementLabel: post.likes === null ? null : 'likes',
-      replies: post.comments,
-      channel: `@${def.handle}`,
-      dateBasis: 'exact',
-    });
-  }
-
-  if (records.length === 0) {
-    return { status: 'empty', error: null, records: [], note: 'No posts inside the retention window.', snapshot };
-  }
-
-  return { status: 'live', error: null, records, note: 'Exact via the Graph API.', snapshot };
-}
 export async function loadInstagramSession(def, ctx) {
   const { now = Date.now(), fetchedAt = now } = ctx;
   const session = sessionConfig();
@@ -770,22 +593,16 @@ export async function loadInstagramSession(def, ctx) {
 }
 
 export async function loadInstagramSource(def, ctx) {
-  const { relay = null, now = Date.now(), fetchedAt = now } = ctx;
+  const { relay = null, now = Date.now(), fetchedAt = now, capture = null } = ctx;
   const headers = { 'user-agent': INSTAGRAM_CRAWLER_UA };
   // The relay forwards a fixed header set, so a cookie only travels direct.
   const jar = sessionConfig();
   if (jar && !relay) headers.cookie = jar.cookie;
 
-  // A stored session gives exact timestamps in one request.
-  // The Graph API is the steadiest route, so it goes first when a token exists.
-  const discovery = await loadInstagramDiscovery(def, ctx);
-  if (discovery.status === 'live') return discovery;
-  const discoveryNote = discovery.status === 'unavailable' ? discovery.error : null;
-
+  // A stored session gives exact timestamps in one request, so it goes first.
   const session = await loadInstagramSession(def, ctx);
   if (session.status === 'live') return session;
   const sessionNote = session.status === 'unavailable' ? session.error : null;
-  const firstFailure = discoveryNote || sessionNote;
 
   let page = null;
   let pageError = null;
@@ -801,6 +618,10 @@ export async function loadInstagramSource(def, ctx) {
   }
 
   if (!page) {
+    // Nothing was served at all: the capture from a home connection is the
+    // most accurate thing left, ahead of the third-party route.
+    const captured = captureRecordsFor(capture, def, { now });
+    if (captured) return captured;
     const fallback = await loadInstagramFallback(def, ctx);
     if (fallback.records.length > 0) return fallback;
     throw pageError;
@@ -823,7 +644,10 @@ export async function loadInstagramSource(def, ctx) {
   };
 
   if (profile.posts.length === 0) {
-    // The host is refused a rendered profile (the runner case): try the coarse route.
+    // The host is refused a rendered profile (the runner case): the committed
+    // local capture next, then the coarse route.
+    const captured = captureRecordsFor(capture, def, { now });
+    if (captured) return { ...captured, snapshot: captured.snapshot ?? snapshot };
     const fallback = await loadInstagramFallback(def, ctx);
     // Keep a specific fallback failure visible instead of flattening it to "login shell".
     if (fallback.records.length > 0 || fallback.status === 'unavailable') {
@@ -831,7 +655,7 @@ export async function loadInstagramSource(def, ctx) {
     }
     return {
       status: 'malformed',
-      error: firstFailure || 'No posts found in the profile page.',
+      error: sessionNote || 'No posts found in the profile page.',
       records: [],
       note: 'Instagram served the login shell, and the coarse fallback found nothing.',
       snapshot,

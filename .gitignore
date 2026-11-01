@@ -5,5 +5,8 @@ node_modules/
 .relay.pid
 .freebuff/
 
+# local credential files (never committed)
+.instagram.env
+
 # the GitHub clone of this repository itself
 motobuzz/

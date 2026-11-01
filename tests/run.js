@@ -12,12 +12,11 @@ import {
   isMetadataRateLimited,
   parseMicrolinkPost,
   parseSearchCodes,
-  parseDiscoveryMedia,
   parseWebProfile,
-  discoveryConfig,
   sessionConfig,
   shortcodeFromPk,
 } from '../src/adapters/instagram.js';
+import { captureRecordsFor, parseInstagramCapture } from '../src/adapters/instagram-capture.js';
 import {
   applyEnrichment,
   enrichLabels,
@@ -335,60 +334,6 @@ test('accepts a bare session id or a pasted cookie header, and nothing else', ()
   assert.equal(sessionConfig({ INSTAGRAM_SESSIONID: 'csrftoken=abc; mid=def' }), null);
 });
 
-const DISCOVERY_PAYLOAD = {
-  business_discovery: {
-    username: 'kenroczen94',
-    followers_count: 1_738_601,
-    media: {
-      data: [
-        {
-          timestamp: '2026-10-31T18:04:13+0000',
-          like_count: 12_400,
-          comments_count: 87,
-          permalink: 'https://www.instagram.com/p/DfJu1kasgcb/',
-          media_type: 'VIDEO',
-          caption: 'Auckland',
-        },
-        {
-          timestamp: '2026-10-30T09:12:00+0000',
-          like_count: 9_100,
-          comments_count: 31,
-          permalink: 'https://www.instagram.com/p/DfES0kasgbd/',
-          media_type: 'IMAGE',
-        },
-      ],
-    },
-  },
-};
-
-test('reads business_discovery media, newest first, with exact timestamps', () => {
-  const profile = parseDiscoveryMedia(DISCOVERY_PAYLOAD);
-  assert.equal(profile.error, null);
-  assert.equal(profile.username, 'kenroczen94');
-  assert.equal(profile.followers, 1_738_601);
-  assert.equal(profile.posts.length, 2);
-  assert.equal(profile.posts[0].publishedAt, Date.parse('2026-10-31T18:04:13Z'));
-  assert.equal(profile.posts[0].likes, 12_400);
-  assert.equal(profile.posts[0].isVideo, true);
-  // Business Discovery sometimes omits the caption, so a missing one is normal.
-  assert.equal(profile.posts[1].caption, null);
-});
-
-test('a personal or missing handle is reported, not treated as empty', () => {
-  const personal = parseDiscoveryMedia({
-    error: { message: 'Invalid user id', code: 110, error_subcode: 2207013 },
-  });
-  assert.equal(personal.error, 'not_discoverable');
-  const expired = parseDiscoveryMedia({ error: { message: 'Invalid OAuth access token', code: 190 } });
-  assert.equal(expired.error, 'token_rejected');
-});
-
-test('needs both a token and the app owner IG user id', () => {
-  assert.equal(discoveryConfig({}), null);
-  assert.equal(discoveryConfig({ INSTAGRAM_TOKEN: 'tok' }), null);
-  assert.equal(discoveryConfig({ INSTAGRAM_BUSINESS_ID: '123' }), null);
-  assert.equal(discoveryConfig({ INSTAGRAM_TOKEN: 'tok', INSTAGRAM_BUSINESS_ID: '123' }).businessId, '123');
-});
 test('reads a post page for its publish time and engagement', () => {
   const html = `<html><head><meta property="og:description" content="13K likes, 46 comments - ausxsupercross on October 31, 2026: &quot;KENNY TAKES THE WIN&quot;. "></head><body><script>var d={"taken_at":1793496853};</script></body></html>`;
   const meta = extractPostMeta(html);
@@ -403,6 +348,69 @@ test('falls back to the earliest time stamp, and never invents a date', () => {
     '<html><body><time dateTime="2026-10-31T08:30:56.000Z">19h</time><time dateTime="2026-11-01T01:50:03.000Z">2h</time></body></html>';
   assert.equal(extractPostMeta(stamped).publishedAt, Date.parse('2026-10-31T08:30:56.000Z'));
   assert.equal(extractPostMeta('<html><body>nothing here</body></html>').publishedAt, null);
+});
+
+test('a committed local capture stands in when the runner cannot read the page', () => {
+  const def = {
+    id: 'ig-test',
+    label: 'Instagram · Test',
+    handle: 'testrider',
+    homepage: 'https://www.instagram.com/testrider/',
+    url: 'https://www.instagram.com/testrider/',
+  };
+  const now = Date.parse('2026-11-01T12:00:00Z');
+  const raw = {
+    capturedAt: now - 2 * 3_600_000,
+    handles: {
+      testrider: {
+        capturedAt: now - 2 * 3_600_000,
+        via: 'profile page',
+        username: 'testrider',
+        followers: 12,
+        posts: [
+          {
+            url: 'https://www.instagram.com/p/AAA111/',
+            title: 'Auckland',
+            summary: null,
+            publishedAt: now - 3_600_000,
+            dateBasis: 'exact',
+            likes: 1300,
+            comments: 46,
+          },
+          // Kept in the file, but outside the retention window, so never counted.
+          {
+            url: 'https://www.instagram.com/p/OLD222/',
+            title: 'Old news',
+            publishedAt: now - 100 * 3_600_000,
+            dateBasis: 'exact',
+            likes: 5,
+            comments: 0,
+          },
+        ],
+      },
+    },
+  };
+
+  assert.equal(parseInstagramCapture(null), null);
+  assert.equal(parseInstagramCapture({ handles: [] }), null);
+
+  const capture = parseInstagramCapture(raw);
+  const outcome = captureRecordsFor(capture, def, { now });
+  assert.equal(outcome.status, 'cached');
+  assert.equal(outcome.records.length, 1);
+  assert.equal(outcome.records[0].url, 'https://www.instagram.com/p/AAA111/');
+  assert.equal(outcome.records[0].engagement, 1300);
+  assert.equal(outcome.records[0].replies, 46);
+  assert.equal(outcome.records[0].dateBasis, 'exact');
+  assert.equal(outcome.records[0].sourceId, 'ig-test');
+  assert.match(outcome.note, /2 h ago/);
+
+  // Handles match without case, so a capture keyed by the page handle still lands.
+  assert.equal(captureRecordsFor(capture, { ...def, handle: 'TestRider' }, { now }).records.length, 1);
+  // A handle with no entry falls through to the live routes instead of inventing data.
+  assert.equal(captureRecordsFor(capture, { ...def, handle: 'someone-else' }, { now }), null);
+  // Past INSTAGRAM_CAPTURE.maxAgeHours the capture is ignored entirely.
+  assert.equal(captureRecordsFor(capture, def, { now: now + 47 * 3_600_000 }), null);
 });
 
 /* ---------- optional LLM enrichment ---------- */

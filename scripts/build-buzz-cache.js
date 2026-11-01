@@ -19,12 +19,13 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 
-import { CACHE_SCHEMA_VERSION, FETCH, INGEST, SITE, WINDOW } from '../src/config.js';
+import { CACHE_SCHEMA_VERSION, FETCH, INGEST, INSTAGRAM_CAPTURE, SITE, WINDOW } from '../src/config.js';
 import { sleep } from '../src/adapters/http.js';
 import { isJunkTitle, loadNewsSource, newsSourceDefs } from '../src/adapters/news.js';
 import { loadRedditSource, redditSourceDefs } from '../src/adapters/reddit.js';
 import { loadYoutubeSource, youtubeSourceDefs } from '../src/adapters/youtube.js';
 import { instagramSourceDefs, loadInstagramSource } from '../src/adapters/instagram.js';
+import { parseInstagramCapture } from '../src/adapters/instagram-capture.js';
 import { bridgeBase, bridgeSourceDefs, loadBridgeSource } from '../src/adapters/bridge.js';
 import { classify } from '../src/engine/classify.js';
 import { buildSnapshot, isEligible, stableId, urlKey } from '../src/engine/score.js';
@@ -80,6 +81,20 @@ async function readPreviousCache() {
     }
   }
   return null;
+}
+
+/**
+ * Read the committed local capture, if there is one. A missing or unreadable
+ * file is not an error: the live routes simply run on their own.
+ */
+async function readInstagramCapture() {
+  const path = resolve(ROOT, INSTAGRAM_CAPTURE.path);
+  if (!existsSync(path)) return null;
+  try {
+    return parseInstagramCapture(JSON.parse(await readFile(path, 'utf8')));
+  } catch {
+    return null;
+  }
 }
 
 async function runSource(def, loader, extra = {}) {
@@ -170,6 +185,16 @@ async function main() {
   const bridgeDefs = bridgeSourceDefs();
   const bridgeIsConfigured = Boolean(bridgeBase());
 
+  // A capture made on a home connection stands in wherever Instagram refuses the runner.
+  const instagramCapture = await readInstagramCapture();
+  if (instagramCapture) {
+    const handleCount = Object.keys(instagramCapture.handles).length;
+    const ageHours = instagramCapture.capturedAt
+      ? Math.round((now - instagramCapture.capturedAt) / 3_600_000)
+      : null;
+    log(`  local Instagram capture: ${handleCount} handle(s)${ageHours === null ? '' : `, ${ageHours} h old`}`);
+  }
+
   // News and YouTube are independent, so they run together; Reddit is spaced out.
   const concurrent = await Promise.all([
     ...newsDefs.map((def) => runSource(def, loadNewsSource)),
@@ -184,7 +209,7 @@ async function main() {
 
   const instagramResults = [];
   for (const def of instagramDefs) {
-    instagramResults.push(await runSource(def, loadInstagramSource, { seenPostCodes }));
+    instagramResults.push(await runSource(def, loadInstagramSource, { seenPostCodes, capture: instagramCapture }));
   }
 
   const bridgeResults = [];
@@ -308,6 +333,9 @@ async function main() {
     build: {
       relay: Boolean(relay),
       bridge: bridgeIsConfigured,
+      instagramCapture: instagramCapture
+        ? { handles: Object.keys(instagramCapture.handles).length, capturedAt: instagramCapture.capturedAt }
+        : null,
       durationMs: Number((process.hrtime.bigint() - startedAt) / 1_000_000n),
       sourcesAttempted: sources.length,
       sourcesLive: liveSources,

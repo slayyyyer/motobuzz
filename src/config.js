@@ -355,6 +355,18 @@ export const INSTAGRAM_FALLBACK = Object.freeze({
 });
 
 /**
+ * A profile read captured by running this build on an ordinary home connection,
+ * where Instagram serves the real page instead of a login shell. The hourly
+ * build reads the committed snapshot whenever it cannot read the page itself.
+ * See `npm run instagram:capture`.
+ */
+export const INSTAGRAM_CAPTURE = Object.freeze({
+  /** Where the capture is committed; the build reads it from the checkout. */
+  path: 'snapshots/instagram.json',
+  /** A capture older than this is ignored and the live routes run instead. */
+  maxAgeHours: 48,
+});
+/**
  * An authenticated read of the same private profile endpoint Instagram's own
  * web app calls. The cookie comes from a manual sign-in made by a person, never
  * from a login attempt here: a datacenter IP is exactly what Instagram
@@ -379,33 +391,6 @@ export const INSTAGRAM_SESSION = Object.freeze({
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
   /** How many of the newest posts to keep per profile when a session works. */
   postsPerProfile: 4,
-});
-
-/**
- * The Meta app route: one Graph API call per handle through `business_discovery`.
- * It is the only route that is neither scraped nor tied to an IP, but it needs an
- * access token belonging to an Instagram Business or Creator account that holds a
- * role on the app, plus that account's own IG user id. See the README for setup.
- */
-export const INSTAGRAM_DISCOVERY = Object.freeze({
-  host: 'https://graph.facebook.com',
-  version: 'v26.0',
-  /**
-   * Newest posts kept per profile. Deliberately low: Business Discovery sits on
-   * Platform rate limits, roughly 200 calls an hour per app at one app user.
-   */
-  postsPerProfile: 4,
-  /** Public fields the IG Media node exposes through field expansion. */
-  fields: Object.freeze([
-    'timestamp',
-    'like_count',
-    'comments_count',
-    'permalink',
-    'media_type',
-    'caption',
-  ]),
-  /** Graph error codes: 190 is a dead token, 110/2207013 a handle it cannot see. */
-  errorCodes: Object.freeze({ tokenRejected: 190, notDiscoverable: 110, notFoundSubcode: 2207013 }),
 });
 
 /**

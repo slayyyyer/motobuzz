@@ -13,6 +13,6 @@
     "cache": "node scripts/build-buzz-cache.js",
     "cache:local": "node scripts/build-buzz-cache.js --relay http://127.0.0.1:8080",
     "test": "node tests/run.js",
-    "instagram:check": "node scripts/instagram-check.mjs"
+    "instagram:capture": "node scripts/instagram-capture.mjs"
   }
 }
