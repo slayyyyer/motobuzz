@@ -204,8 +204,11 @@ are dropped and counted.
 - YouTube channel markup is scraped, not an API. When it changes, those sources report `malformed` and every other
   source keeps working.
 - Google News links point at a Google redirect; the publisher and its homepage are stored alongside.
-* Instagram markup is undocumented: the adapter reads the page Instagram serves a crawler, and a post whose own page
+- Instagram markup is undocumented: the adapter reads the page Instagram serves a crawler, and a post whose own page
   has no readable timestamp is dropped rather than dated "now", so a bad parse costs records, never accuracy.
+- Instagram answered this machine but not GitHub's runner: on the first deployed run all ten profiles came back as
+  the logged-out shell (`malformed`), while the same code returned posts locally, so the block looks IP- or
+  rate-based rather than a markup change. Those sources then contribute nothing instead of fake posts.
 - Greenhouse cases: a quiet weekend really does read as a low score, and the page says so instead of manufacturing
   drama.
 
