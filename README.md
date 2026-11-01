@@ -152,6 +152,20 @@ The settings mirror murmur's news model: Z.ai's OpenAI-compatible endpoint, `glm
 a 60-second timeout and one retry on 429 or 5xx. `LLM_MODEL` and `LLM_API_BASE` override them, and `ZAI_API_KEY` or
 `NEWS_MODEL_API_KEY` are accepted in place of `LLM_API_KEY`.
 
+## Checking the Meta app before trusting it
+
+`npm run instagram:check` calls the same Graph API route the hourly build calls, for every handle in
+`INSTAGRAM_PROFILES`, and prints one line per profile:
+
+```bash
+INSTAGRAM_TOKEN=EAAG... INSTAGRAM_BUSINESS_ID=17841405309211844 npm run instagram:check
+```
+
+A dead token, a Page id pasted where the Instagram user id belongs, and a missing permission are each reported as
+what they are, so a refusal is fixed before the secrets are set rather than discovered by the cron. A handle on a
+personal account reads as no posts in the window: this route cannot see those accounts, and the build labels it
+`not_discoverable` rather than empty.
+
 ## Local development
 
 Requires Node 18.17 or newer. There is no install step and no dependencies.
