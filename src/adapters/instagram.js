@@ -86,8 +86,14 @@ export function instagramSourceDefs() {
 }
 
 /**
- * Lift the profile and its recent posts out of a crawler-rendered page.
- * Exported so the suite can run it against a fixture without the network.
+ * Lift the profile and its recent posts out of a rendered page.
+ *
+ * Instagram renamed both containers in 2026: the profile arrives as
+ * `xig_user_by_username` and its timeline as `polaris_ordered_timeline_connection`
+ * where each post carries its shortcode in `code` and no timestamp at all. The
+ * older names are still read, so a page that predates the change parses too.
+ * Posts come back newest first by media id, which is what makes the newest few
+ * worth a post-page fetch for their exact publish time.
  */
 export function extractProfile(html) {
   const source = String(html || '');
@@ -96,7 +102,7 @@ export function extractProfile(html) {
 
   for (const block of source.matchAll(/<script type="application\/json"[^>]*>([\s\S]*?)<\/script>/g)) {
     const raw = block[1];
-    if (!raw.includes('polaris_timeline_connection') && !raw.includes('follower_count')) continue;
+    if (!/xig_user_|polaris_(ordered_)?timeline_connection|follower_count/.test(raw)) continue;
     let parsed;
     try {
       parsed = JSON.parse(raw);
@@ -104,8 +110,13 @@ export function extractProfile(html) {
       continue;
     }
     if (!timeline) {
-      const hit = walkFor(parsed, (node) => Array.isArray(node.polaris_timeline_connection?.edges));
-      if (hit) timeline = hit.polaris_timeline_connection;
+      const hit = walkFor(
+        parsed,
+        (node) =>
+          Array.isArray(node.polaris_ordered_timeline_connection?.edges) ||
+          Array.isArray(node.polaris_timeline_connection?.edges),
+      );
+      if (hit) timeline = hit.polaris_ordered_timeline_connection ?? hit.polaris_timeline_connection;
     }
     if (!profile) {
       const hit = walkFor(
@@ -122,15 +133,24 @@ export function extractProfile(html) {
     const node = edge?.node;
     if (!node) continue;
     const pk = node.pk ? String(node.pk) : String(node.id || '').replace(/^POLARIS_/, '');
-    if (!/^\d{6,}$/.test(pk)) continue;
-    const caption = typeof node.caption?.text === 'string' ? node.caption.text : null;
-    posts.push({
-      pk,
-      caption,
-      isVideo: node.media_type === 2,
-      shortcode: shortcodeFromPk(pk),
-    });
+    const stated = typeof node.code === 'string' ? node.code : node.shortcode;
+    const shortcode = stated || shortcodeFromPk(pk);
+    if (!shortcode || !/^[A-Za-z0-9_-]{6,}$/.test(shortcode)) continue;
+    const rawCaption = node.caption;
+    const caption =
+      typeof rawCaption === 'string' ? rawCaption : typeof rawCaption?.text === 'string' ? rawCaption.text : null;
+    posts.push({ pk, caption, isVideo: node.media_type === 2, shortcode });
   }
+
+  // An integer media id grows with every post, so descending is newest-first.
+  posts.sort((left, right) => {
+    try {
+      const diff = BigInt(right.pk) - BigInt(left.pk);
+      return diff > 0n ? 1 : diff < 0n ? -1 : 0;
+    } catch {
+      return 0;
+    }
+  });
 
   return {
     username: profile?.username ?? null,
@@ -235,17 +255,21 @@ export function parseMicrolinkPost(payload, code) {
 
 /**
  * Read the stored cookie, accepting either the bare value or a pasted
- * `sessionid=…; ds_user_id=…` header. Returns null when nothing is configured,
- * so the authenticated route simply does not run.
+ * `sessionid=…; csrftoken=…` jar. Every cookie is kept, because the jar is what
+ * makes the session look like the browser that created it. Returns null when
+ * nothing is configured, so the authenticated route simply does not run.
  */
 export function sessionConfig(env = process.env) {
   const raw = String(env.INSTAGRAM_SESSIONID || '').trim();
   if (!raw) return null;
-  const source = raw.includes('sessionid=') ? raw : `sessionid=${raw}`;
-  const sessionid = (source.match(/sessionid=([^;\s]+)/) || [])[1];
-  if (!sessionid) return null;
-  const dsUserId = (source.match(/ds_user_id=([^;\s]+)/) || [])[1];
-  return { cookie: dsUserId ? `sessionid=${sessionid}; ds_user_id=${dsUserId}` : `sessionid=${sessionid}` };
+  // A bare id is the common paste; otherwise keep every cookie that came with it.
+  if (!raw.includes('=')) return /^[\w.:%-]+$/.test(raw) ? { cookie: `sessionid=${raw}` } : null;
+  const jar = raw
+    .split(';')
+    .map((part) => part.trim())
+    .filter((part) => /^[A-Za-z0-9_.-]+=\S+$/.test(part));
+  if (!jar.some((part) => part.startsWith('sessionid='))) return null;
+  return { cookie: jar.join('; ') };
 }
 
 /**
@@ -483,6 +507,7 @@ export async function loadInstagramSession(def, ctx) {
       {
         relay: null,
         headers: {
+          ...INSTAGRAM_SESSION.headers,
           'user-agent': INSTAGRAM_SESSION.userAgent,
           'x-ig-app-id': INSTAGRAM_SESSION.appId,
           'x-requested-with': 'XMLHttpRequest',
@@ -564,6 +589,9 @@ export async function loadInstagramSession(def, ctx) {
 export async function loadInstagramSource(def, ctx) {
   const { relay = null, now = Date.now(), fetchedAt = now } = ctx;
   const headers = { 'user-agent': INSTAGRAM_CRAWLER_UA };
+  // The relay forwards a fixed header set, so a cookie only travels direct.
+  const jar = sessionConfig();
+  if (jar && !relay) headers.cookie = jar.cookie;
 
   // A stored session gives exact timestamps in one request, so it goes first.
   const session = await loadInstagramSession(def, ctx);

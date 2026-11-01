@@ -100,10 +100,14 @@ Google News items carry the real outlet in their `<source>` element, so the publ
 index. The direct feeds for Racer X, Dirt Bike, and Motocross Action were tested and refused the request; the query
 route is the honest way to include them.
 
-**Instagram is read from the page it serves a crawler.** A logged-out browser gets a login shell with no posts in it,
-but the same URL fetched with a crawler user agent returns a rendered page containing the recent posts, and each
-post's own page carries the exact publish time plus its like and comment counts. Handles live in `INSTAGRAM_PROFILES`
-and were checked against the live pages: a wrong handle still answers 200, but as a small account with zero posts.
+**Instagram is read from the page it serves a crawler — and that page changed in 2026.** A logged-out browser still
+gets a login shell, but a crawler user agent is served a rendered page, with two catches found by testing it: the
+profile now arrives as `xig_user_by_username` and its timeline as `polaris_ordered_timeline_connection`, where each
+post carries its shortcode in `code` and no timestamp at all, and the page served to a signed-out crawler is stale —
+for the watched riders it offered ten posts from 2015. The adapter reads both the old and new container names, and
+each post's own page still supplies the exact `taken_at` epoch plus like and comment counts, so recent chatter needs
+the session cookie below. Handles live in `INSTAGRAM_PROFILES` and were checked against the live pages: a wrong
+handle still answers 200, but as a small account with zero posts.
 
 **When Instagram refuses the host, a coarse fallback takes over.** GitHub's runners get the login shell whatever the
 user agent, so for those hosts DuckDuckGo finds recent post permalinks and the microlink metadata API reads the post
@@ -117,7 +121,11 @@ site is unaffected.
 `sessionid` cookie (and `ds_user_id`, if you have it), and store it as the `INSTAGRAM_SESSIONID` secret; the build then
 reads the same endpoint Instagram's own web app uses, which returns exact `taken_at_timestamp` values, likes and
 comments for a profile in a single request. Paste either the bare value or the whole `sessionid=…; ds_user_id=…`
-string — the workflow passes it through untouched. It is a bearer credential: keep it in Actions secrets, never in the
+string — the workflow passes it through untouched, and every cookie in it is sent, because the full jar is what
+makes the session look like the browser that created it. The request also carries the `Sec-Fetch-*` set Instagram
+insists on: without those headers the same endpoint answers a bare `400 SecFetch Policy violation.` instead of JSON.
+A `challenge_required` cannot be cleared from the build — it needs a person in a browser, and retrying it
+programmatically is what escalates to a checkpoint — so the source reports it and moves on. It is a bearer credential: keep it in Actions secrets, never in the
 repo or a log, and treat signing out as revoking it. If Instagram answers `login_required` or `checkpoint_required`,
 the source says so rather than quietly falling back. Passwords are deliberately not supported: a login attempt from a
 runner is exactly what triggers a challenge, and repeated attempts are what get an account flagged.

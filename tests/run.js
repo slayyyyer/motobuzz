@@ -217,6 +217,35 @@ test('a page with no timeline yields no posts rather than throwing', () => {
   assert.equal(profile.username, null);
 });
 
+const IG_ORDERED_HTML = `<html><body><script type="application/json" data-sjs>${JSON.stringify({
+  data: {
+    xig_user_by_username: {
+      pk: '1643027426',
+      username: 'eli_tomac',
+      full_name: 'Eli Tomac',
+      follower_count: 1_400_000,
+      polaris_ordered_timeline_connection: {
+        edges: [
+          { node: { pk: '894353666430332098', code: 'xpYevPJezC', media_type: 1, caption: null } },
+          { node: { pk: '894360000000000001', code: 'xpYevPJezD', media_type: 2, caption: { text: 'Auckland' } } },
+        ],
+      },
+    },
+  },
+})}</script></body></html>`;
+
+test('reads the renamed 2026 timeline, newest post first', () => {
+  const profile = extractProfile(IG_ORDERED_HTML);
+  assert.equal(profile.username, 'eli_tomac');
+  assert.equal(profile.fullName, 'Eli Tomac');
+  assert.equal(profile.followers, 1_400_000);
+  assert.equal(profile.posts.length, 2);
+  // `code` is the shortcode, and the higher media id is the newer post.
+  assert.equal(profile.posts[0].shortcode, 'xpYevPJezD');
+  assert.equal(profile.posts[0].isVideo, true);
+  assert.equal(profile.posts[0].caption, 'Auckland');
+  assert.equal(profile.posts[1].shortcode, 'xpYevPJezC');
+});
 test('media ids turn into the post shortcodes Instagram uses', () => {
   assert.equal(shortcodeFromPk('4019950133779236635'), 'DfJu1kasgcb');
   assert.equal(shortcodeFromPk('not-a-number'), null);
@@ -295,6 +324,13 @@ test('accepts a bare session id or a pasted cookie header, and nothing else', ()
     sessionConfig({ INSTAGRAM_SESSIONID: 'sessionid=abc123; ds_user_id=42' }).cookie,
     'sessionid=abc123; ds_user_id=42',
   );
+  // A whole browser jar survives: the extra cookies are what make the session
+  // look like the browser that created it, which is what Instagram checks.
+  assert.equal(
+    sessionConfig({ INSTAGRAM_SESSIONID: 'csrftoken=abc; sessionid=xyz; mid=def; ig_did=ghi' }).cookie,
+    'csrftoken=abc; sessionid=xyz; mid=def; ig_did=ghi',
+  );
+  assert.equal(sessionConfig({ INSTAGRAM_SESSIONID: 'csrftoken=abc; mid=def' }), null);
 });
 
 test('reads a post page for its publish time and engagement', () => {

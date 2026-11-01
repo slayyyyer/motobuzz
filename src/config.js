@@ -362,6 +362,18 @@ export const INSTAGRAM_FALLBACK = Object.freeze({
  */
 export const INSTAGRAM_SESSION = Object.freeze({
   appId: '936619743392459',
+  /**
+   * Instagram answers a bare `400 SecFetch Policy violation.` without these;
+   * with them the same request reaches the endpoint and returns real JSON.
+   */
+  headers: Object.freeze({
+    'sec-fetch-site': 'same-origin',
+    'sec-fetch-mode': 'cors',
+    'sec-fetch-dest': 'empty',
+    origin: 'https://www.instagram.com',
+    'x-asbd-id': '129477',
+    'accept-language': 'en-US,en;q=0.9',
+  }),
   profileUrl: 'https://i.instagram.com/api/v1/users/web_profile_info/',
   userAgent:
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
