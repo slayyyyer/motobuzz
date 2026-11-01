@@ -46,7 +46,7 @@ jobs:
       - name: Build the hourly cache
         env:
           MOTOBUZZ_RELAY: http://127.0.0.1:8080
-          # Optional: a self-hosted RSS bridge for Instagram and X. Leave unset to skip them.
+          # Optional: a self-hosted RSS bridge for X. Leave unset to skip those sources.
           MOTOBUZZ_BRIDGE_URL: ${{ vars.MOTOBUZZ_BRIDGE_URL }}
           # Continuity: carry still-valid records across a failed source.
           PREVIOUS_CACHE_URL: ${{ vars.MOTOBUZZ_PUBLIC_URL }}

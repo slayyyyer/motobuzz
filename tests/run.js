@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 
 import { parseFeed, parseDate } from '../src/adapters/feed.js';
 import { extractChannelVideos } from '../src/adapters/youtube.js';
+import { extractPostMeta, extractProfile, shortcodeFromPk } from '../src/adapters/instagram.js';
 import { isJunkTitle } from '../src/adapters/news.js';
 import { matchUpstream } from '../proxy/allowlist.js';
 import { classify } from '../src/engine/classify.js';
@@ -158,6 +159,67 @@ test('extracts channel videos from the page JSON', () => {
 
 test('a page with no entries yields nothing rather than throwing', () => {
   assert.deepEqual(extractChannelVideos('<html><body>nope</body></html>', NOW), []);
+});
+
+/* ---------- instagram ---------- */
+
+const IG_PROFILE_HTML = `<html><body><script type="application/json" data-sjs>${JSON.stringify({
+  bbox: {
+    result: {
+      data: {
+        xig_user_by_igid_v2: {
+          username: 'kenroczen94',
+          full_name: 'Ken Roczen',
+          follower_count: 1_738_443,
+          biography: '2026 Supercross Champ',
+          polaris_timeline_connection: {
+            edges: [
+              { node: { pk: '4019950133779236635', media_type: 1, caption: { text: 'KENNY TAKES THE WIN IN AUCKLAND' } } },
+              { node: { pk: '4019879548253793724', media_type: 2, caption: null } },
+            ],
+          },
+        },
+      },
+    },
+  },
+})}</script></body></html>`;
+
+test('lifts profile stats and recent posts out of a crawler page', () => {
+  const profile = extractProfile(IG_PROFILE_HTML);
+  assert.equal(profile.username, 'kenroczen94');
+  assert.equal(profile.followers, 1_738_443);
+  assert.equal(profile.posts.length, 2);
+  assert.equal(profile.posts[0].shortcode, 'DfJu1kasgcb');
+  assert.equal(profile.posts[0].isVideo, false);
+  assert.equal(profile.posts[1].isVideo, true);
+  assert.equal(profile.posts[1].caption, null);
+});
+
+test('a page with no timeline yields no posts rather than throwing', () => {
+  const profile = extractProfile('<html><body>login</body></html>');
+  assert.deepEqual(profile.posts, []);
+  assert.equal(profile.username, null);
+});
+
+test('media ids turn into the post shortcodes Instagram uses', () => {
+  assert.equal(shortcodeFromPk('4019950133779236635'), 'DfJu1kasgcb');
+  assert.equal(shortcodeFromPk('not-a-number'), null);
+});
+
+test('reads a post page for its publish time and engagement', () => {
+  const html = `<html><head><meta property="og:description" content="13K likes, 46 comments - ausxsupercross on October 31, 2026: &quot;KENNY TAKES THE WIN&quot;. "></head><body><script>var d={"taken_at":1793496853};</script></body></html>`;
+  const meta = extractPostMeta(html);
+  assert.equal(meta.publishedAt, 1_793_496_853_000);
+  assert.equal(meta.likes, 13_000);
+  assert.equal(meta.comments, 46);
+  assert.equal(meta.author, 'ausxsupercross');
+});
+
+test('falls back to the earliest time stamp, and never invents a date', () => {
+  const stamped =
+    '<html><body><time dateTime="2026-10-31T08:30:56.000Z">19h</time><time dateTime="2026-11-01T01:50:03.000Z">2h</time></body></html>';
+  assert.equal(extractPostMeta(stamped).publishedAt, Date.parse('2026-10-31T08:30:56.000Z'));
+  assert.equal(extractPostMeta('<html><body>nothing here</body></html>').publishedAt, null);
 });
 
 /* ---------- classification ---------- */
@@ -452,6 +514,8 @@ test('allows known upstreams', () => {
   assert.equal(matchUpstream('https://news.google.com/rss/search?q=motocross').allowed, true);
   assert.equal(matchUpstream('https://www.reddit.com/r/Motocross/.rss').allowed, true);
   assert.equal(matchUpstream('https://www.youtube.com/@vitalmx/videos').allowed, true);
+  assert.equal(matchUpstream('https://www.instagram.com/kenroczen94/').allowed, true);
+  assert.equal(matchUpstream('https://www.instagram.com/p/DfJu1kasgcb/').rule.crawlerUa, true);
 });
 
 test('refuses everything else', () => {

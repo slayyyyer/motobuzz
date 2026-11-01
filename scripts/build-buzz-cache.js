@@ -15,7 +15,7 @@
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 
@@ -24,6 +24,7 @@ import { sleep } from '../src/adapters/http.js';
 import { isJunkTitle, loadNewsSource, newsSourceDefs } from '../src/adapters/news.js';
 import { loadRedditSource, redditSourceDefs } from '../src/adapters/reddit.js';
 import { loadYoutubeSource, youtubeSourceDefs } from '../src/adapters/youtube.js';
+import { instagramSourceDefs, loadInstagramSource } from '../src/adapters/instagram.js';
 import { bridgeBase, bridgeSourceDefs, loadBridgeSource } from '../src/adapters/bridge.js';
 import { classify } from '../src/engine/classify.js';
 import { buildSnapshot, isEligible, stableId, urlKey } from '../src/engine/score.js';
@@ -90,6 +91,7 @@ async function runSource(def, loader) {
       error: outcome.error ?? null,
       note: outcome.note ?? null,
       records: outcome.records || [],
+      snapshot: outcome.snapshot ?? null,
       fetchedAt,
       elapsedMs: Date.now() - started,
     };
@@ -100,6 +102,7 @@ async function runSource(def, loader) {
       error: errorText(error),
       note: null,
       records: [],
+      snapshot: null,
       fetchedAt,
       elapsedMs: Date.now() - started,
     };
@@ -129,12 +132,31 @@ function normalizeRecord(record) {
   };
 }
 
+/**
+ * Keep the parsed rider pages next to the cache, one file per handle, so a post
+ * on the site can be traced back to the page it came from. Gitignored: build
+ * output, not source.
+ */
+async function saveSocialSnapshots(attempts) {
+  const directory = resolve(ROOT, 'data/social');
+  await mkdir(directory, { recursive: true });
+  let saved = 0;
+  for (const attempt of attempts) {
+    if (!attempt.snapshot?.handle) continue;
+    const payload = { sourceId: attempt.def.id, fetchedAt: attempt.fetchedAt, ...attempt.snapshot };
+    await writeFile(join(directory, `${attempt.snapshot.handle}.json`), `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+    saved += 1;
+  }
+  return saved;
+}
+
 async function main() {
   log(`MotoBuzz cache build — ${new Date(now).toISOString()}${relay ? ` via ${relay}` : ' (direct)'}`);
 
   const newsDefs = newsSourceDefs();
   const redditDefs = redditSourceDefs();
   const youtubeDefs = youtubeSourceDefs();
+  const instagramDefs = instagramSourceDefs();
   const bridgeDefs = bridgeSourceDefs();
   const bridgeIsConfigured = Boolean(bridgeBase());
 
@@ -148,6 +170,11 @@ async function main() {
   for (const [index, def] of redditDefs.entries()) {
     if (index > 0) await sleep(FETCH.redditSpacingMs);
     redditResults.push(await runSource(def, loadRedditSource));
+  }
+
+  const instagramResults = [];
+  for (const def of instagramDefs) {
+    instagramResults.push(await runSource(def, loadInstagramSource));
   }
 
   const bridgeResults = [];
@@ -167,7 +194,7 @@ async function main() {
     bridgeResults.push(await runSource(def, loadBridgeSource));
   }
 
-  const attempts = [...concurrent, ...redditResults, ...bridgeResults];
+  const attempts = [...concurrent, ...redditResults, ...instagramResults, ...bridgeResults];
 
   // --- continuity -----------------------------------------------------------
   const previous = await readPreviousCache();
@@ -308,6 +335,7 @@ async function main() {
 
   await mkdir(dirname(outPath), { recursive: true });
   await writeFile(outPath, `${JSON.stringify(cache, null, 2)}\n`, 'utf8');
+  const snapshotsSaved = await saveSocialSnapshots(attempts);
 
   // --- report ---------------------------------------------------------------
   reportSources();
@@ -315,6 +343,7 @@ async function main() {
   log(`  ${snapshot.buzz.headline}`);
   log(`  ${items.length} records written, ${duplicates} duplicates dropped, ${retained.length} carried from the previous cache`);
   log(`  wrote ${outPath}`);
+  if (snapshotsSaved > 0) log(`  saved ${snapshotsSaved} Instagram page snapshots under data/social/`);
   log('');
 
   if (recordedSources === 0) {

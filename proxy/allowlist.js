@@ -1,3 +1,5 @@
+import { INSTAGRAM_CRAWLER_UA } from '../src/config.js';
+
 /**
  * Every upstream the local relay will ever contact.
  *
@@ -13,6 +15,12 @@ export const ALLOWED_UPSTREAMS = Object.freeze([
   { origin: 'https://news.google.com', pathPrefixes: ['/rss/search'], label: 'Google News index' },
   { origin: 'https://www.reddit.com', pathPrefixes: ['/r/'], label: 'Reddit public subreddit feeds' },
   { origin: 'https://www.youtube.com', pathPrefixes: ['/@'], label: 'Public YouTube channel pages' },
+  {
+    origin: 'https://www.instagram.com',
+    pathPrefixes: ['/'],
+    label: 'Instagram public profile and post pages',
+    crawlerUa: true,
+  },
 ]);
 
 const IP_LITERAL = /^(\d{1,3}\.){3}\d{1,3}$|^\[?[0-9a-f:]+\]?$/i;

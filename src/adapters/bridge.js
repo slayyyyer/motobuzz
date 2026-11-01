@@ -1,12 +1,11 @@
 /**
  * Optional social bridge.
  *
- * Instagram and X both refuse anonymous server-side reads, so MotoBuzz does not
- * pretend to scrape them by default. If the operator runs their own RSS bridge
- * (RSSHub and friends do this) and sets MOTOBUZZ_BRIDGE_URL for the build, the
- * rider and brand profiles in config.js are read through it and are labelled as
- * bridged social sources. Without a bridge the sources report `unconfigured`,
- * and the page says so rather than showing invented posts.
+ * X refuses anonymous server-side reads. If the operator runs their own RSS
+ * bridge (RSSHub and friends do this) and sets MOTOBUZZ_BRIDGE_URL for the build,
+ * the X handles in config.js are read through it and labelled as bridged social
+ * sources. Without a bridge those sources report `unconfigured` rather than
+ * showing invented posts. Instagram has its own adapter and no longer needs this.
  */
 import { BRIDGE_HANDLES, INGEST } from '../config.js';
 import { httpsUrl, truncate } from '../lib/text.js';

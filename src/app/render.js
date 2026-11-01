@@ -459,7 +459,7 @@ function renderMethod(state) {
         <li>${build.sourcesLive} of ${build.sourcesAttempted} sources answered on this run; ${build.sourcesWithRecords} produced records.</li>
         <li>${build.recordsKept} records kept, ${build.duplicatesDropped} duplicates dropped, ${build.recordsRetained} carried over from the previous snapshot.</li>
         <li>${build.relay ? 'Fetched through the allowlisted relay.' : 'Fetched directly from the runner.'} ${
-          build.bridge ? 'A social bridge is configured.' : 'No social bridge is configured, so Instagram and X are not read.'
+          build.bridge ? 'A social bridge is configured for X.' : 'Instagram is read from public profile pages; X needs a bridge.'
         }</li>
       </ul>`
     : '<p class="panel-sub">No build information in this snapshot.</p>';

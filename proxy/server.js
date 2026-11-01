@@ -13,6 +13,7 @@ import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setDefaultResultOrder } from 'node:dns';
 import { matchUpstream } from './allowlist.js';
+import { INSTAGRAM_CRAWLER_UA } from '../src/config.js';
 
 // A broken IPv6 route on a runner should not take a whole build down.
 setDefaultResultOrder('ipv4first');
@@ -101,7 +102,8 @@ async function relay(target, res) {
       redirect: 'manual',
       signal: deadline,
       headers: {
-        'user-agent': 'MotoBuzz/1.0 (+https://github.com/) relay',
+        // Instagram only renders posts for a crawler agent; every other upstream keeps the honest one.
+        'user-agent': check.rule?.crawlerUa ? INSTAGRAM_CRAWLER_UA : 'MotoBuzz/1.0 (+https://github.com/) relay',
         accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, application/json, text/html;q=0.8',
         'accept-language': 'en-US,en;q=0.9',
       },

@@ -316,15 +316,32 @@ export const YOUTUBE_CHANNELS = Object.freeze([
 export const YOUTUBE_BASE = 'https://www.youtube.com';
 
 /**
- * Optional operator-run RSS bridge (a self-hosted RSSHub, for example) for the
- * social pages that refuse anonymous requests: Instagram and X. Nothing is
- * fetched from these unless MOTOBUZZ_BRIDGE_URL is set for the build.
+ * Instagram answers a browser with a login shell, but a crawler user agent gets
+ * the rendered profile page. These handles were checked against the live pages:
+ * a wrong handle still returns 200, but as a tiny account with zero posts.
+ */
+export const INSTAGRAM_CRAWLER_UA =
+  'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
+
+export const INSTAGRAM_PROFILES = Object.freeze([
+  { id: 'ig-kenroczen', handle: 'kenroczen94', label: 'Instagram · Ken Roczen' },
+  { id: 'ig-jettlawrence', handle: 'jettson18', label: 'Instagram · Jett Lawrence' },
+  { id: 'ig-haidendeegan', handle: 'dangerboydeegan', label: 'Instagram · Haiden Deegan' },
+  { id: 'ig-hunterlawrence', handle: 'hunterlawrence', label: 'Instagram · Hunter Lawrence' },
+  { id: 'ig-elitomac', handle: 'elitomac', label: 'Instagram · Eli Tomac' },
+  { id: 'ig-chasesexton', handle: 'chasesexton', label: 'Instagram · Chase Sexton' },
+  { id: 'ig-cooperwebb', handle: 'cooperwebb2', label: 'Instagram · Cooper Webb' },
+  { id: 'ig-supermotocross', handle: 'supermotocross', label: 'Instagram · SuperMotocross' },
+  { id: 'ig-supercrosslive', handle: 'supercrosslive', label: 'Instagram · Supercross LIVE' },
+  { id: 'ig-mxgp', handle: 'mxgp', label: 'Instagram · MXGP' },
+]);
+
+/**
+ * Optional operator-run RSS bridge (a self-hosted RSSHub, for example) for X,
+ * which still refuses anonymous reads. Nothing is fetched from it unless
+ * MOTOBUZZ_BRIDGE_URL is set for the build.
  */
 export const BRIDGE_HANDLES = Object.freeze([
-  { id: 'ig-kenroczen', network: 'instagram', handle: 'kenroczen', label: 'Instagram · Ken Roczen' },
-  { id: 'ig-jettlawrence', network: 'instagram', handle: 'jettlawrence', label: 'Instagram · Jett Lawrence' },
-  { id: 'ig-haidendeegan', network: 'instagram', handle: 'haidendeegan', label: 'Instagram · Haiden Deegan' },
-  { id: 'ig-supermotocross', network: 'instagram', handle: 'supermotocross', label: 'Instagram · SuperMotocross' },
   { id: 'x-supercross', network: 'twitter', handle: 'SupercrossLIVE', label: 'X · Supercross Live' },
   { id: 'x-mxgp', network: 'twitter', handle: 'MXGP', label: 'X · MXGP' },
 ]);
@@ -343,6 +360,9 @@ export const INGEST = Object.freeze({
   itemsPerBridge: 12,
   maxTitleLength: 240,
   maxSummaryLength: 320,
+  instagramPostsPerProfile: 4,
+  instagramSpacingMs: 700,
+  instagramTimeoutMs: 20_000,
   bridgeTimeoutMs: 20_000,
 });
 

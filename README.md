@@ -22,6 +22,7 @@ GitHub Actions (hourly, minute 23)
   │    ├─ news adapters   → official RSS + Google News topic queries
   │    ├─ reddit adapter  → public subreddit Atom feeds
   │    ├─ youtube adapter → public channel pages (scraped, best effort)
+  │    ├─ instagram adapter → public profile pages (crawler-rendered)
   │    ├─ bridge adapter  → your own RSS bridge, only if configured
   │    ├─ classify        → topics, riders, brands, teams, series, region
   │    ├─ dedupe + retain → one copy per story, older records carried forward
@@ -93,15 +94,20 @@ Everything lives in [`src/config.js`](src/config.js). There is no language model
 | Google News × 4 | news | `news.google.com/rss/search?q=…&when:3d` | Reaches Racer X, Vital MX, Dirt Bike, MotoOnline, and the rest, which block datacenter traffic or have no feed of their own |
 | r/Motocross, r/supercross, r/MXGP | social | `reddit.com/r/<sub>/.rss` | Where the paddock argues |
 | 10 YouTube channels | social | `youtube.com/@handle/videos` | Riders, teams, and brands publishing their own video |
+| 10 Instagram profiles | social | `instagram.com/<handle>/` | Riders, teams, and series accounts, read from the page a crawler is served |
 
 Google News items carry the real outlet in their `<source>` element, so the publisher shown is the outlet, not the
 index. The direct feeds for Racer X, Dirt Bike, and Motocross Action were tested and refused the request; the query
 route is the honest way to include them.
 
-**Instagram and X are not scraped by default.** Both refuse anonymous server-side reads now, and pretending otherwise
-would mean shipping fake or empty social data. If you run your own RSS bridge (RSSHub, for example), set
-`MOTOBUZZ_BRIDGE_URL` for the build and the profiles listed in `BRIDGE_HANDLES` are read through it, labelled as
-bridged. Without it, those sources report `not configured` on the page.
+**Instagram is read from the page it serves a crawler.** A logged-out browser gets a login shell with no posts in it,
+but the same URL fetched with a crawler user agent returns a rendered page containing the recent posts, and each
+post's own page carries the exact publish time plus its like and comment counts. Handles live in `INSTAGRAM_PROFILES`
+and were checked against the live pages: a wrong handle still answers 200, but as a small account with zero posts.
+
+**X is not scraped.** It still refuses anonymous reads. If you run your own RSS bridge (RSSHub, for example), set
+`MOTOBUZZ_BRIDGE_URL` for the build and the handles in `BRIDGE_HANDLES` are read through it, labelled as bridged.
+Without it those sources report `not configured` on the page.
 
 ## Local development
 
@@ -198,6 +204,8 @@ are dropped and counted.
 - YouTube channel markup is scraped, not an API. When it changes, those sources report `malformed` and every other
   source keeps working.
 - Google News links point at a Google redirect; the publisher and its homepage are stored alongside.
+* Instagram markup is undocumented: the adapter reads the page Instagram serves a crawler, and a post whose own page
+  has no readable timestamp is dropped rather than dated "now", so a bad parse costs records, never accuracy.
 - Greenhouse cases: a quiet weekend really does read as a low score, and the page says so instead of manufacturing
   drama.
 
@@ -210,7 +218,7 @@ proxy/server.js             local static server + allowlisted relay
 proxy/allowlist.js          every upstream the relay may reach
 scripts/build-buzz-cache.js the hourly build
 src/config.js               feeds, watchlist, topics, decay, thresholds
-src/adapters/               news, reddit, youtube, bridge, feed parser, http
+src/adapters/               news, reddit, youtube, instagram, bridge, feed parser, http
 src/engine/classify.js      topics, names, region
 src/engine/score.js         energy, decay, momentum, heat, headline
 src/engine/validate.js      cache validation used by both build and page
