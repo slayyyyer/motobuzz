@@ -355,6 +355,21 @@ export const INSTAGRAM_FALLBACK = Object.freeze({
 });
 
 /**
+ * An authenticated read of the same private profile endpoint Instagram's own
+ * web app calls. The cookie comes from a manual sign-in made by a person, never
+ * from a login attempt here: a datacenter IP is exactly what Instagram
+ * challenges, and a failed login is what gets an account flagged.
+ */
+export const INSTAGRAM_SESSION = Object.freeze({
+  appId: '936619743392459',
+  profileUrl: 'https://i.instagram.com/api/v1/users/web_profile_info/',
+  userAgent:
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+  /** How many of the newest posts to keep per profile when a session works. */
+  postsPerProfile: 4,
+});
+
+/**
  * Optional operator-run RSS bridge (a self-hosted RSSHub, for example) for X,
  * which still refuses anonymous reads. Nothing is fetched from it unless
  * MOTOBUZZ_BRIDGE_URL is set for the build.

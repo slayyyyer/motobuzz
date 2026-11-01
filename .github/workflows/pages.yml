@@ -55,6 +55,8 @@ jobs:
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
           LLM_API_BASE: ${{ vars.LLM_API_BASE }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
+          # Optional: a session cookie from a manual Instagram sign-in. No login is attempted here.
+          INSTAGRAM_SESSIONID: ${{ secrets.INSTAGRAM_SESSIONID }}
         run: node scripts/build-buzz-cache.js
 
       - name: Assemble the static site

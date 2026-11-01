@@ -12,6 +12,8 @@ import {
   isMetadataRateLimited,
   parseMicrolinkPost,
   parseSearchCodes,
+  parseWebProfile,
+  sessionConfig,
   shortcodeFromPk,
 } from '../src/adapters/instagram.js';
 import {
@@ -246,6 +248,53 @@ test('reads metadata for one post and centres its unknown hour at midday', () =>
   assert.equal(parseMicrolinkPost(null, 'x'), null);
   assert.equal(isMetadataRateLimited({ status: 'fail', code: 'ERATE', message: 'daily' }), true);
   assert.equal(isMetadataRateLimited({ status: 'success', data: {} }), false);
+});
+
+test('reads an authenticated profile response with its exact timestamps', () => {
+  const payload = {
+    data: {
+      user: {
+        username: 'kenroczen94',
+        full_name: 'Ken Roczen',
+        biography: '94',
+        edge_followed_by: { count: 1_738_443 },
+        edge_owner_to_timeline_media: {
+          edges: [
+            {
+              node: {
+                shortcode: 'DfJu1kasgcb',
+                taken_at_timestamp: 1_793_496_853,
+                is_video: false,
+                edge_liked_by: { count: 13_000 },
+                edge_media_to_comment: { count: 46 },
+                edge_media_to_caption: { edges: [{ node: { text: 'Auckland' } }] },
+              },
+            },
+          ],
+        },
+      },
+    },
+  };
+  const profile = parseWebProfile(payload);
+  assert.equal(profile.error, null);
+  assert.equal(profile.followers, 1_738_443);
+  assert.equal(profile.posts[0].publishedAt, 1_793_496_853_000);
+  assert.equal(profile.posts[0].likes, 13_000);
+  assert.equal(profile.posts[0].caption, 'Auckland');
+
+  assert.equal(parseWebProfile({ message: 'login_required', status: 'fail' }).error, 'login_required');
+  assert.equal(parseWebProfile({ message: 'checkpoint_required' }).error, 'checkpoint_required');
+  assert.equal(parseWebProfile(null).error, 'no_user');
+});
+
+test('accepts a bare session id or a pasted cookie header, and nothing else', () => {
+  assert.equal(sessionConfig({}), null);
+  assert.equal(sessionConfig({ INSTAGRAM_SESSIONID: '   ' }), null);
+  assert.equal(sessionConfig({ INSTAGRAM_SESSIONID: 'abc123' }).cookie, 'sessionid=abc123');
+  assert.equal(
+    sessionConfig({ INSTAGRAM_SESSIONID: 'sessionid=abc123; ds_user_id=42' }).cookie,
+    'sessionid=abc123; ds_user_id=42',
+  );
 });
 
 test('reads a post page for its publish time and engagement', () => {

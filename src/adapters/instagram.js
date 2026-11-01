@@ -1,7 +1,12 @@
 /**
  * Instagram adapter.
  *
- * Two routes, in order:
+ * Three routes, in order:
+ *
+ * 0. A stored session cookie. Instagram's own web app reads profiles through
+ *    `web_profile_info`, which returns exact timestamps and engagement for a
+ *    signed-in session in one request, so it wins whenever one is configured.
+ *    The cookie is never obtained here — see INSTAGRAM_SESSION.
  *
  * 1. The profile page. Instagram serves a browser a login shell, but a crawler
  *    user agent gets the rendered page with a `polaris_timeline_connection`
@@ -18,7 +23,14 @@
  * Every failure is reported (malformed / empty) instead of swallowed, and no
  * record is ever dated "now".
  */
-import { DECAY, INGEST, INSTAGRAM_CRAWLER_UA, INSTAGRAM_FALLBACK, INSTAGRAM_PROFILES } from '../config.js';
+import {
+  DECAY,
+  INGEST,
+  INSTAGRAM_CRAWLER_UA,
+  INSTAGRAM_FALLBACK,
+  INSTAGRAM_PROFILES,
+  INSTAGRAM_SESSION,
+} from '../config.js';
 import { decodeEntities, httpsUrl, parseCount, truncate } from '../lib/text.js';
 import { fetchText, sleep } from './http.js';
 
@@ -221,6 +233,63 @@ export function parseMicrolinkPost(payload, code) {
   };
 }
 
+/**
+ * Read the stored cookie, accepting either the bare value or a pasted
+ * `sessionid=…; ds_user_id=…` header. Returns null when nothing is configured,
+ * so the authenticated route simply does not run.
+ */
+export function sessionConfig(env = process.env) {
+  const raw = String(env.INSTAGRAM_SESSIONID || '').trim();
+  if (!raw) return null;
+  const source = raw.includes('sessionid=') ? raw : `sessionid=${raw}`;
+  const sessionid = (source.match(/sessionid=([^;\s]+)/) || [])[1];
+  if (!sessionid) return null;
+  const dsUserId = (source.match(/ds_user_id=([^;\s]+)/) || [])[1];
+  return { cookie: dsUserId ? `sessionid=${sessionid}; ds_user_id=${dsUserId}` : `sessionid=${sessionid}` };
+}
+
+/**
+ * Lift a profile out of `web_profile_info`: exact `taken_at_timestamp`, real
+ * like and comment counts, the caption, and no second request.
+ */
+export function parseWebProfile(payload) {
+  const user = payload?.data?.user;
+  if (!user) {
+    const message = `${payload?.message || ''} ${payload?.status || ''}`.toLowerCase();
+    const error = message.includes('checkpoint')
+      ? 'checkpoint_required'
+      : message.includes('login') || message.includes('unauth') || payload?.require_login
+        ? 'login_required'
+        : 'no_user';
+    return { error, username: null, fullName: null, followers: null, biography: null, posts: [] };
+  }
+
+  const posts = [];
+  for (const edge of user.edge_owner_to_timeline_media?.edges ?? []) {
+    const node = edge?.node;
+    if (!node?.shortcode) continue;
+    const caption = node.edge_media_to_caption?.edges?.[0]?.node?.text;
+    const taken = Number(node.taken_at_timestamp);
+    posts.push({
+      shortcode: node.shortcode,
+      caption: typeof caption === 'string' ? caption : null,
+      isVideo: node.is_video === true,
+      publishedAt: Number.isFinite(taken) ? taken * 1000 : null,
+      likes: Number.isFinite(node.edge_liked_by?.count) ? node.edge_liked_by.count : null,
+      comments: Number.isFinite(node.edge_media_to_comment?.count) ? node.edge_media_to_comment.count : null,
+    });
+  }
+
+  return {
+    error: null,
+    username: user.username ?? null,
+    fullName: user.full_name ?? null,
+    followers: Number.isFinite(user.edge_followed_by?.count) ? user.edge_followed_by.count : null,
+    biography: typeof user.biography === 'string' ? user.biography : null,
+    posts,
+  };
+}
+
 function fallbackIsDue(now) {
   const hours = Math.floor(now / 3_600_000);
   return hours % INSTAGRAM_FALLBACK.intervalHours === 0;
@@ -386,9 +455,120 @@ export async function loadInstagramFallback(def, ctx) {
  * @param {ReturnType<typeof instagramSourceDefs>[number]} def
  * @param {{relay?: string|null, now: number, fetchedAt: number, seenPostCodes?: Set<string>}} ctx
  */
+/**
+ * The authenticated route. Requested directly, not through the relay: the relay
+ * forwards a fixed set of headers, and a session cookie should not be handed to
+ * an intermediary anyway.
+ */
+export async function loadInstagramSession(def, ctx) {
+  const { now = Date.now(), fetchedAt = now } = ctx;
+  const session = sessionConfig();
+  if (!session) return { status: 'skipped', error: null, records: [], note: null, snapshot: null };
+
+  const snapshot = {
+    handle: def.handle,
+    url: def.url,
+    username: null,
+    fullName: null,
+    followers: null,
+    biography: null,
+    via: 'session cookie',
+    posts: [],
+  };
+
+  let payload = null;
+  try {
+    const response = await fetchText(
+      `${INSTAGRAM_SESSION.profileUrl}?username=${encodeURIComponent(def.handle)}`,
+      {
+        relay: null,
+        headers: {
+          'user-agent': INSTAGRAM_SESSION.userAgent,
+          'x-ig-app-id': INSTAGRAM_SESSION.appId,
+          'x-requested-with': 'XMLHttpRequest',
+          referer: `${BASE}/${def.handle}/`,
+          cookie: session.cookie,
+        },
+        accept: 'application/json',
+        timeoutMs: INGEST.instagramTimeoutMs,
+      },
+    );
+    payload = JSON.parse(response.body);
+  } catch (error) {
+    const reason = error?.status ? `HTTP ${error.status}` : 'network failure';
+    return {
+      status: 'unavailable',
+      error: `Session request failed (${reason}).`,
+      records: [],
+      note: null,
+      snapshot,
+    };
+  }
+
+  const profile = parseWebProfile(payload);
+  snapshot.username = profile.username;
+  snapshot.fullName = profile.fullName;
+  snapshot.followers = profile.followers;
+  snapshot.biography = profile.biography;
+
+  if (profile.error) {
+    const detail =
+      profile.error === 'checkpoint_required'
+        ? 'Instagram wants a challenge solved for this session.'
+        : 'Instagram rejected the stored session.';
+    return { status: 'unavailable', error: detail, records: [], note: `web_profile_info: ${profile.error}`, snapshot };
+  }
+
+  const records = [];
+  for (const post of profile.posts.slice(0, INSTAGRAM_SESSION.postsPerProfile)) {
+    const url = httpsUrl(`${BASE}/p/${post.shortcode}/`);
+    if (!url || !Number.isFinite(post.publishedAt)) continue;
+    if (now - post.publishedAt > DECAY.social.maxAgeHours * 3_600_000) continue;
+
+    const caption = post.caption ? truncate(post.caption, INGEST.maxSummaryLength) : null;
+    snapshot.posts.push({
+      shortcode: post.shortcode,
+      caption,
+      publishedAt: post.publishedAt,
+      likes: post.likes,
+      comments: post.comments,
+      isVideo: post.isVideo,
+      dateBasis: 'exact',
+    });
+
+    records.push({
+      sourceId: def.id,
+      kind: 'social',
+      publisher: def.label,
+      publisherUrl: httpsUrl(def.homepage),
+      title: truncate(post.caption || `Instagram post by @${def.handle}`, INGEST.maxTitleLength),
+      summary: null,
+      url,
+      publishedAt: post.publishedAt,
+      fetchedAt,
+      engagement: post.likes,
+      engagementLabel: post.likes === null ? null : 'likes',
+      replies: post.comments,
+      channel: `@${def.handle}`,
+      dateBasis: 'exact',
+    });
+  }
+
+  if (records.length === 0) {
+    return { status: 'empty', error: null, records: [], note: 'No posts inside the retention window.', snapshot };
+  }
+
+  return { status: 'live', error: null, records, note: 'Exact via stored session.', snapshot };
+}
+
 export async function loadInstagramSource(def, ctx) {
   const { relay = null, now = Date.now(), fetchedAt = now } = ctx;
   const headers = { 'user-agent': INSTAGRAM_CRAWLER_UA };
+
+  // A stored session gives exact timestamps in one request, so it goes first.
+  const session = await loadInstagramSession(def, ctx);
+  if (session.status === 'live') return session;
+  const sessionNote = session.status === 'unavailable' ? session.error : null;
 
   let page = null;
   let pageError = null;
@@ -434,7 +614,7 @@ export async function loadInstagramSource(def, ctx) {
     }
     return {
       status: 'malformed',
-      error: 'No posts found in the profile page.',
+      error: sessionNote || 'No posts found in the profile page.',
       records: [],
       note: 'Instagram served the login shell, and the coarse fallback found nothing.',
       snapshot,

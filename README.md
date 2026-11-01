@@ -113,6 +113,15 @@ tiny. It also only knows the publish **day**, so those records are stamped at mi
 instead of being presented as exact times. If both routes fail, the source reports `malformed` and the rest of the
 site is unaffected.
 
+**A session cookie beats both, when you are willing to supply one.** Sign in to Instagram yourself, copy the
+`sessionid` cookie (and `ds_user_id`, if you have it), and store it as the `INSTAGRAM_SESSIONID` secret; the build then
+reads the same endpoint Instagram's own web app uses, which returns exact `taken_at_timestamp` values, likes and
+comments for a profile in a single request. Paste either the bare value or the whole `sessionid=…; ds_user_id=…`
+string — the workflow passes it through untouched. It is a bearer credential: keep it in Actions secrets, never in the
+repo or a log, and treat signing out as revoking it. If Instagram answers `login_required` or `checkpoint_required`,
+the source says so rather than quietly falling back. Passwords are deliberately not supported: a login attempt from a
+runner is exactly what triggers a challenge, and repeated attempts are what get an account flagged.
+
 **X is not scraped.** It still refuses anonymous reads. If you run your own RSS bridge (RSSHub, for example), set
 `MOTOBUZZ_BRIDGE_URL` for the build and the handles in `BRIDGE_HANDLES` are read through it, labelled as bridged.
 Without it those sources report `not configured` on the page.
