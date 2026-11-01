@@ -2,48 +2,31 @@
  * The local Instagram capture.
  *
  * GitHub's runners are answered with a login shell or a 429, so the hourly build
- * cannot read Instagram itself. An ordinary home connection usually can. This
- * module is the read side of `npm run instagram:capture`: the script writes
- * snapshots/instagram.json, it gets committed, and the build uses it for any
- * profile it could not read live.
+ * cannot read Instagram itself. An ordinary home connection usually can.
+ * `npm run capture:instagram` writes snapshots/instagram.json, it gets committed,
+ * and the build uses it for any profile it could not read live.
  *
- * Nothing here trusts the file beyond its shape. A missing, empty or malformed
- * capture is null, and the live routes run exactly as they would without one.
+ * The file's shape, its freshness window and its age label live in
+ * local-capture.js, which the Reddit capture shares; this module only maps a
+ * captured post into an Instagram record.
  */
 import { DECAY, INGEST, INSTAGRAM_CAPTURE } from '../config.js';
 import { httpsUrl, truncate } from '../lib/text.js';
+import { captureAgeLabel, entryIsFresh, readCaptureEntries } from './local-capture.js';
 
 /**
  * @param {unknown} raw
  * @returns {{capturedAt: number|null, handles: Record<string, object>}|null}
  */
 export function parseInstagramCapture(raw) {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-  const handles = raw.handles;
-  if (!handles || typeof handles !== 'object' || Array.isArray(handles)) return null;
-
-  const cleaned = {};
-  for (const [handle, entry] of Object.entries(handles)) {
-    if (!entry || typeof entry !== 'object' || !Array.isArray(entry.posts)) continue;
-    const capturedAt = Number(entry.capturedAt);
-    if (!Number.isFinite(capturedAt)) continue;
-    cleaned[String(handle).toLowerCase()] = {
-      capturedAt,
-      via: typeof entry.via === 'string' ? entry.via : null,
-      username: typeof entry.username === 'string' ? entry.username : null,
-      followers: Number.isFinite(entry.followers) ? entry.followers : null,
-      posts: entry.posts,
-    };
-  }
-
-  return { capturedAt: Number.isFinite(Number(raw.capturedAt)) ? Number(raw.capturedAt) : null, handles: cleaned };
+  const parsed = readCaptureEntries(raw, 'handles');
+  if (!parsed) return null;
+  return { capturedAt: parsed.capturedAt, handles: parsed.entries };
 }
 
 /** A capture older than INSTAGRAM_CAPTURE.maxAgeHours is not used at all. */
 export function captureIsFresh(entry, now) {
-  if (!entry || !Number.isFinite(entry.capturedAt)) return false;
-  const age = now - entry.capturedAt;
-  return age >= -60_000 && age <= INSTAGRAM_CAPTURE.maxAgeHours * 3_600_000;
+  return entryIsFresh(entry, now, INSTAGRAM_CAPTURE.maxAgeHours);
 }
 
 /**
@@ -78,7 +61,10 @@ export function captureRecordsFor(capture, def, ctx = {}) {
       kind: 'social',
       publisher: def.label,
       publisherUrl: httpsUrl(def.homepage),
-      title: truncate(typeof post.title === 'string' && post.title ? post.title : `Instagram post by @${def.handle}`, INGEST.maxTitleLength),
+      title: truncate(
+        typeof post.title === 'string' && post.title ? post.title : `Instagram post by @${def.handle}`,
+        INGEST.maxTitleLength,
+      ),
       summary: typeof post.summary === 'string' && post.summary ? truncate(post.summary, INGEST.maxSummaryLength) : null,
       url,
       publishedAt,
@@ -93,12 +79,11 @@ export function captureRecordsFor(capture, def, ctx = {}) {
 
   if (records.length === 0) return null;
 
-  const hours = Math.max(0, Math.round((now - entry.capturedAt) / 3_600_000));
   return {
     status: 'cached',
     error: null,
     records,
-    note: `Read locally ${hours < 1 ? 'under an hour' : `${hours} h`} ago, where Instagram served the page.`,
+    note: `Read locally ${captureAgeLabel(entry.capturedAt, now)}, where Instagram served the page.`,
     snapshot: {
       handle: def.handle,
       url: def.url,

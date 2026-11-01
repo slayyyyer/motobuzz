@@ -11,6 +11,8 @@ import { INSTAGRAM_CRAWLER_UA, INSTAGRAM_FALLBACK } from '../src/config.js';
 export const ALLOWED_UPSTREAMS = Object.freeze([
   { origin: 'https://www.supercrosslive.com', pathPrefixes: ['/rss', '/feed'], label: 'Monster Energy Supercross RSS' },
   { origin: 'https://www.supermotocross.com', pathPrefixes: ['/feed/'], label: 'SuperMotocross RSS' },
+  { origin: 'https://www.pulpmx.com', pathPrefixes: ['/feed'], label: 'PulpMX RSS' },
+  { origin: 'https://www.motoonline.com.au', pathPrefixes: ['/feed/'], label: 'MotoOnline RSS' },
   { origin: 'https://www.mxgp.com', pathPrefixes: ['/rss.xml'], label: 'MXGP RSS' },
   { origin: 'https://news.google.com', pathPrefixes: ['/rss/search'], label: 'Google News index' },
   { origin: 'https://www.reddit.com', pathPrefixes: ['/r/'], label: 'Reddit public subreddit feeds' },

@@ -264,6 +264,20 @@ export const FEEDS = Object.freeze([
     homepage: 'https://www.supermotocross.com/',
     url: 'https://www.supermotocross.com/feed/',
   },
+  {
+    id: 'pulpmx',
+    label: 'PulpMX',
+    provider: 'PulpMX',
+    homepage: 'https://www.pulpmx.com/',
+    url: 'https://www.pulpmx.com/feed',
+  },
+  {
+    id: 'motoonline',
+    label: 'MotoOnline',
+    provider: 'MotoOnline (AU)',
+    homepage: 'https://www.motoonline.com.au/',
+    url: 'https://www.motoonline.com.au/feed/',
+  },
 ]);
 
 /** Google News topic queries stand in for the outlets that block runners. */
@@ -272,6 +286,15 @@ export const NEWS_QUERIES = Object.freeze([
   { id: 'gnews-supercross', label: 'Supercross', query: 'supercross', when: '3d' },
   { id: 'gnews-mxgp', label: 'MXGP', query: 'MXGP', when: '3d' },
   { id: 'gnews-smx', label: 'SuperMotocross', query: 'SuperMotocross motocross', when: '3d' },
+  // Named riders catch the story whose headline never says "motocross",
+  // which is most of them once the race reports are written.
+  {
+    id: 'gnews-riders',
+    label: 'Rider names',
+    query: '"Jett Lawrence" OR "Haiden Deegan" OR "Eli Tomac" OR "Cooper Webb"',
+    when: '2d',
+  },
+  { id: 'gnews-pro-motocross', label: 'Pro Motocross', query: '"Pro Motocross" OR "motocross national"', when: '3d' },
 ]);
 
 export const GOOGLE_NEWS_ENDPOINT = 'https://news.google.com/rss/search';
@@ -306,11 +329,13 @@ export const YOUTUBE_CHANNELS = Object.freeze([
   { id: 'yt-vitalmx', handle: 'vitalmx', label: 'Vital MX' },
   { id: 'yt-motocrossaction', handle: 'motocrossaction', label: 'Motocross Action' },
   { id: 'yt-dirtbikemag', handle: 'DirtBikeMagazine', label: 'Dirt Bike Magazine' },
-  { id: 'yt-ktm', handle: 'KTM', label: 'KTM' },
-  { id: 'yt-kawasaki', handle: 'KawasakiUSA', label: 'Kawasaki USA' },
-  { id: 'yt-yamaha', handle: 'YamahaMotorUSA', label: 'Yamaha Motor USA' },
-  { id: 'yt-suzuki', handle: 'suzukicycles', label: 'Suzuki Cycles' },
-  { id: 'yt-ducati', handle: 'Ducati', label: 'Ducati' },
+  // The OEM channels post a handful of times a season, so they were replaced
+  // by outlets that publish every week. Handles answer 200 when checked; a
+  // wrong one is a 404, so a typo cannot linger as a permanently empty source.
+  { id: 'yt-pulpmx', handle: 'pulpmx', label: 'PulpMX' },
+  { id: 'yt-gypsytales', handle: 'gypsytales', label: 'Gypsy Tales' },
+  { id: 'yt-racerx', handle: 'RacerXIllustrated', label: 'Racer X' },
+  { id: 'yt-whiskeythrottle', handle: 'whiskeythrottle', label: 'Whiskey Throttle' },
 ]);
 
 export const YOUTUBE_BASE = 'https://www.youtube.com';
@@ -334,6 +359,12 @@ export const INSTAGRAM_PROFILES = Object.freeze([
   { id: 'ig-supermotocross', handle: 'supermotocross', label: 'Instagram · SuperMotocross' },
   { id: 'ig-supercrosslive', handle: 'supercrosslive', label: 'Instagram · Supercross LIVE' },
   { id: 'ig-mxgp', handle: 'mxgp', label: 'Instagram · MXGP' },
+  // Team and brand accounts post every race weekend, where a rider who is not
+  // racing may not post at all. Follower counts were read from the live pages.
+  { id: 'ig-starracing', handle: 'starracingyamaha', label: 'Instagram · Star Racing Yamaha' },
+  { id: 'ig-monsterenergy', handle: 'monsterenergy', label: 'Instagram · Monster Energy' },
+  { id: 'ig-ktmfactory', handle: 'ktmfactoryracing', label: 'Instagram · KTM Factory Racing' },
+  { id: 'ig-yamahausa', handle: 'yamahamotorusa', label: 'Instagram · Yamaha Motor USA' },
 ]);
 
 /**
@@ -364,6 +395,16 @@ export const INSTAGRAM_CAPTURE = Object.freeze({
   /** Where the capture is committed; the build reads it from the checkout. */
   path: 'snapshots/instagram.json',
   /** A capture older than this is ignored and the live routes run instead. */
+  maxAgeHours: 48,
+});
+
+/**
+ * The same arrangement for Reddit, which throttles datacenter traffic: on most
+ * runner builds two of the three subreddits come back 429. See
+ * `npm run capture:reddit`.
+ */
+export const REDDIT_CAPTURE = Object.freeze({
+  path: 'snapshots/reddit.json',
   maxAgeHours: 48,
 });
 /**

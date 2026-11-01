@@ -19,13 +19,14 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 
-import { CACHE_SCHEMA_VERSION, FETCH, INGEST, INSTAGRAM_CAPTURE, SITE, WINDOW } from '../src/config.js';
+import { CACHE_SCHEMA_VERSION, FETCH, INGEST, INSTAGRAM_CAPTURE, REDDIT_CAPTURE, SITE, WINDOW } from '../src/config.js';
 import { sleep } from '../src/adapters/http.js';
 import { isJunkTitle, loadNewsSource, newsSourceDefs } from '../src/adapters/news.js';
 import { loadRedditSource, redditSourceDefs } from '../src/adapters/reddit.js';
 import { loadYoutubeSource, youtubeSourceDefs } from '../src/adapters/youtube.js';
 import { instagramSourceDefs, loadInstagramSource } from '../src/adapters/instagram.js';
 import { parseInstagramCapture } from '../src/adapters/instagram-capture.js';
+import { parseRedditCapture } from '../src/adapters/reddit-capture.js';
 import { bridgeBase, bridgeSourceDefs, loadBridgeSource } from '../src/adapters/bridge.js';
 import { classify } from '../src/engine/classify.js';
 import { buildSnapshot, isEligible, stableId, urlKey } from '../src/engine/score.js';
@@ -84,14 +85,14 @@ async function readPreviousCache() {
 }
 
 /**
- * Read the committed local capture, if there is one. A missing or unreadable
+ * Read one committed local capture, if there is one. A missing or unreadable
  * file is not an error: the live routes simply run on their own.
  */
-async function readInstagramCapture() {
-  const path = resolve(ROOT, INSTAGRAM_CAPTURE.path);
+async function readCapture(configPath, parse) {
+  const path = resolve(ROOT, configPath);
   if (!existsSync(path)) return null;
   try {
-    return parseInstagramCapture(JSON.parse(await readFile(path, 'utf8')));
+    return parse(JSON.parse(await readFile(path, 'utf8')));
   } catch {
     return null;
   }
@@ -185,14 +186,18 @@ async function main() {
   const bridgeDefs = bridgeSourceDefs();
   const bridgeIsConfigured = Boolean(bridgeBase());
 
-  // A capture made on a home connection stands in wherever Instagram refuses the runner.
-  const instagramCapture = await readInstagramCapture();
-  if (instagramCapture) {
-    const handleCount = Object.keys(instagramCapture.handles).length;
-    const ageHours = instagramCapture.capturedAt
-      ? Math.round((now - instagramCapture.capturedAt) / 3_600_000)
-      : null;
-    log(`  local Instagram capture: ${handleCount} handle(s)${ageHours === null ? '' : `, ${ageHours} h old`}`);
+  // Captures made on a home connection stand in wherever the runner is refused.
+  const instagramCapture = await readCapture(INSTAGRAM_CAPTURE.path, parseInstagramCapture);
+  const redditCapture = await readCapture(REDDIT_CAPTURE.path, parseRedditCapture);
+  for (const [label, capture, field] of [
+    ['Instagram', instagramCapture, 'handles'],
+    ['Reddit', redditCapture, 'subreddits'],
+  ]) {
+    if (!capture) continue;
+    const count = Object.keys(capture[field]).length;
+    const ageHours = capture.capturedAt ? Math.round((now - capture.capturedAt) / 3_600_000) : null;
+    const age = ageHours === null ? '' : `, ${ageHours} h old`;
+    log(`  local ${label} capture: ${count} source(s)${age}`);
   }
 
   // News and YouTube are independent, so they run together; Reddit is spaced out.
@@ -204,7 +209,7 @@ async function main() {
   const redditResults = [];
   for (const [index, def] of redditDefs.entries()) {
     if (index > 0) await sleep(FETCH.redditSpacingMs);
-    redditResults.push(await runSource(def, loadRedditSource));
+    redditResults.push(await runSource(def, loadRedditSource, { capture: redditCapture }));
   }
 
   const instagramResults = [];
@@ -335,6 +340,9 @@ async function main() {
       bridge: bridgeIsConfigured,
       instagramCapture: instagramCapture
         ? { handles: Object.keys(instagramCapture.handles).length, capturedAt: instagramCapture.capturedAt }
+        : null,
+      redditCapture: redditCapture
+        ? { subreddits: Object.keys(redditCapture.subreddits).length, capturedAt: redditCapture.capturedAt }
         : null,
       durationMs: Number((process.hrtime.bigint() - startedAt) / 1_000_000n),
       sourcesAttempted: sources.length,

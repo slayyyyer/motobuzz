@@ -24,6 +24,8 @@ GitHub Actions (hourly, minute 23)
   │    ├─ youtube adapter → public channel pages (scraped, best effort)
   │    ├─ instagram adapter → public profile pages (crawler-rendered)
   │    ├─ bridge adapter  → your own RSS bridge, only if configured
+  │    ├─ local capture   → snapshots/ committed from a home connection, used
+  │    │                     wherever a runner is refused
   │    ├─ classify        → topics, riders, brands, teams, series, region
   │    ├─ dedupe + retain → one copy per story, older records carried forward
   │    └─ score           → energy, decay, momentum, buckets, heat tables
@@ -91,10 +93,12 @@ Everything lives in [`src/config.js`](src/config.js). There is no language model
 | --- | --- | --- | --- |
 | Supercross Live | news | `supercrosslive.com/rss` | Official Monster Energy AMA Supercross feed |
 | SuperMotocross | news | `supermotocross.com/feed/` | Official SMX World Championship feed |
-| Google News × 4 | news | `news.google.com/rss/search?q=…&when:3d` | Reaches Racer X, Vital MX, Dirt Bike, MotoOnline, and the rest, which block datacenter traffic or have no feed of their own |
+| PulpMX | news | `pulpmx.com/feed` | The show and the shop talk that break signings and injuries first |
+| MotoOnline | news | `motoonline.com.au/feed/` | Australian MX coverage, still publishing daily through the off-season |
+| Google News × 6 | news | `news.google.com/rss/search?q=…&when:3d` | Reaches Racer X, Vital MX, Dirt Bike, and the rest, which block datacenter traffic or have no feed of their own; two of the queries name riders, so a headline that never says "motocross" still counts |
 | r/Motocross, r/supercross, r/MXGP | social | `reddit.com/r/<sub>/.rss` | Where the paddock argues |
-| 10 YouTube channels | social | `youtube.com/@handle/videos` | Riders, teams, and brands publishing their own video |
-| 10 Instagram profiles | social | `instagram.com/<handle>/` | Riders, teams, and series accounts, read from the page a crawler is served |
+| 9 YouTube channels | social | `youtube.com/@handle/videos` | Series, magazines, and shows that publish every week |
+| 14 Instagram profiles | social | `instagram.com/<handle>/` | Riders, teams, brands, and series accounts, read from the page a crawler is served |
 
 Google News items carry the real outlet in their `<source>` element, so the publisher shown is the outlet, not the
 index. The direct feeds for Racer X, Dirt Bike, and Motocross Action were tested and refused the request; the query
@@ -142,22 +146,26 @@ The settings mirror murmur's news model: Z.ai's OpenAI-compatible endpoint, `glm
 a 60-second timeout and one retry on 429 or 5xx. `LLM_MODEL` and `LLM_API_BASE` override them, and `ZAI_API_KEY` or
 `NEWS_MODEL_API_KEY` are accepted in place of `LLM_API_KEY`.
 
-## Capturing Instagram from your own machine
+## Capturing social sources from your own machine
 
-GitHub's runners are answered with a login shell or a 429, so the hourly build cannot read Instagram. An ordinary home connection usually can. Capture on your own machine and commit the result: the build uses it for any profile it could not read live, and still prefers its own read whenever the runner does get through.
+Two sources answer an ordinary home connection and refuse GitHub's runners: Instagram replies with a login shell or a 429, and Reddit throttles datacenter traffic until two of the three subreddits are 429 as well. Capture them on your own machine and commit the result. The build prefers its own live read whenever the runner does get through, and falls back to your capture when it does not.
 
 ```bash
-npm run instagram:capture
-git add snapshots/instagram.json
-git commit -m "Capture Instagram from a home connection"
+npm run capture              # both
+npm run capture:instagram    # just Instagram
+npm run capture:reddit       # just Reddit
+
+git add snapshots/
+git commit -m "Capture social sources from a home connection"
 git push
 ```
 
-- Each profile is read exactly the way the build reads it: the profile page for the recent shortcodes, then each post's own page for its real publish time and engagement counts.
-- A capture is trusted for `INSTAGRAM_CAPTURE.maxAgeHours` (48 h) and ignored after that, so a stale read is never passed off as current.
-- A profile that fails during a capture keeps its previous entry instead of dropping off the site.
+- Each source is read exactly the way the build reads it: Instagram's profile page for the recent shortcodes plus each post's own page for its real publish time and counts, and Reddit's public Atom feed.
+- A capture is trusted for `INSTAGRAM_CAPTURE.maxAgeHours` / `REDDIT_CAPTURE.maxAgeHours` (48 h each) and ignored after that, so a stale read is never passed off as current.
+- A source that fails during a capture keeps its previous entry instead of dropping off the site. Only a run with nothing in it at all leaves the file untouched.
 - Records taken from a capture are labelled `cached`, and the source tooltip says how old the local read is.
-- Export `INSTAGRAM_SESSIONID` first if you have a signed-in cookie; the capture then uses the exact `web_profile_info` route.
+- Export `INSTAGRAM_SESSIONID` first if you have a signed-in cookie; the Instagram capture then uses the exact `web_profile_info` route.
+- `snapshots/` is committed source, not build output: the hourly runner reads it from the checkout.
 
 ## Local development
 
@@ -270,8 +278,9 @@ styles.css                  all styling
 proxy/server.js             local static server + allowlisted relay
 proxy/allowlist.js          every upstream the relay may reach
 scripts/build-buzz-cache.js the hourly build
+scripts/capture-local.mjs   local capture for sources a runner cannot read
 src/config.js               feeds, watchlist, topics, decay, thresholds
-src/adapters/               news, reddit, youtube, instagram, bridge, feed parser, http
+src/adapters/               news, reddit, youtube, instagram, bridge, feed parser, http, local capture
 src/engine/classify.js      topics, names, region
 src/engine/score.js         energy, decay, momentum, heat, headline
 src/engine/validate.js      cache validation used by both build and page
@@ -286,6 +295,6 @@ tests/run.js                the suite
 npm test
 ```
 
-44 tests using only Node's built-in assertions: text decoding, feed and Atom parsing, malformed-versus-empty
+64 tests using only Node's built-in assertions: text decoding, feed and Atom parsing, malformed-versus-empty
 diagnostics, the YouTube page extractor against a fixture, classification and alias safety, decay and momentum,
 saturation, bucket accounting, cache validation, and the relay allowlist.

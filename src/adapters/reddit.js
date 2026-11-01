@@ -1,15 +1,18 @@
 /**
  * Reddit adapter.
  *
- * Reddit's public JSON listing now refuses datacenter traffic, but the public
- * Atom feed for a subreddit still answers. It carries no score, so a Reddit post
- * contributes volume and recency rather than audience size; the build spaces
- * requests out and treats a 429 as an unavailable source rather than a failure.
+ * Reddit's public JSON listing refuses datacenter traffic, and the Atom feed is
+ * throttled on most runner builds. `npm run capture:reddit` records the
+ * subreddits from a home connection and this adapter falls back to that
+ * snapshot whenever the feed itself is refused. It carries no score, so a Reddit
+ * post contributes volume and recency rather than audience size; the build
+ * spaces requests out and treats a 429 as an unavailable source, not a failure.
  */
 import { INGEST, REDDIT_ENDPOINT, SUBREDDITS } from '../config.js';
 import { httpsUrl, truncate } from '../lib/text.js';
 import { fetchText } from './http.js';
 import { parseFeed } from './feed.js';
+import { redditCaptureRecordsFor } from './reddit-capture.js';
 
 export function redditSourceDefs() {
   return SUBREDDITS.map((entry) => ({
@@ -29,19 +32,33 @@ export function redditSourceDefs() {
  * @param {{relay?: string|null, now: number, fetchedAt: number}} ctx
  */
 export async function loadRedditSource(def, ctx) {
-  const { relay = null, now = Date.now(), fetchedAt = now } = ctx;
+  const { relay = null, now = Date.now(), fetchedAt = now, capture = null } = ctx;
+  const fromCapture = () => redditCaptureRecordsFor(capture, def, { now });
 
-  const response = await fetchText(def.url, {
-    relay,
-    accept: 'application/atom+xml, application/rss+xml, */*;q=0.5',
-    headers: { 'user-agent': 'windows:motobuzz:1.0 (subreddit feed reader)' },
-  });
+  let body;
+  try {
+    const response = await fetchText(def.url, {
+      relay,
+      accept: 'application/atom+xml, application/rss+xml, */*;q=0.5',
+      headers: { 'user-agent': 'windows:motobuzz:1.0 (subreddit feed reader)' },
+    });
+    body = response.body;
+  } catch (error) {
+    // Throttled or refused outright: the home-connection capture stands in.
+    const captured = fromCapture();
+    if (captured) return captured;
+    throw error;
+  }
 
-  const parsed = parseFeed(response.body);
+  const parsed = parseFeed(body);
   if (!parsed.ok) {
+    const captured = fromCapture();
+    if (captured) return captured;
     return { status: 'malformed', error: parsed.error || 'Subreddit feed could not be parsed.', records: [], note: null };
   }
   if (parsed.isEmpty) {
+    const captured = fromCapture();
+    if (captured) return captured;
     return { status: 'empty', error: null, records: [], note: 'Subreddit feed returned no posts.' };
   }
 

@@ -17,6 +17,7 @@ import {
   shortcodeFromPk,
 } from '../src/adapters/instagram.js';
 import { captureRecordsFor, parseInstagramCapture } from '../src/adapters/instagram-capture.js';
+import { parseRedditCapture, redditCaptureRecordsFor } from '../src/adapters/reddit-capture.js';
 import {
   applyEnrichment,
   enrichLabels,
@@ -411,6 +412,56 @@ test('a committed local capture stands in when the runner cannot read the page',
   assert.equal(captureRecordsFor(capture, { ...def, handle: 'someone-else' }, { now }), null);
   // Past INSTAGRAM_CAPTURE.maxAgeHours the capture is ignored entirely.
   assert.equal(captureRecordsFor(capture, def, { now: now + 47 * 3_600_000 }), null);
+});
+
+test('a committed Reddit capture stands in when the feed is throttled', () => {
+  const def = {
+    id: 'reddit-test',
+    label: 'r/Test',
+    sub: 'Test',
+    homepage: 'https://www.reddit.com/r/Test/',
+  };
+  const now = Date.parse('2026-11-01T12:00:00Z');
+  const raw = {
+    capturedAt: now - 3_600_000,
+    subreddits: {
+      test: {
+        capturedAt: now - 3_600_000,
+        posts: [
+          {
+            url: 'https://www.reddit.com/r/Test/comments/abc123/a_thread/',
+            title: 'Jett Lawrence signs a new deal',
+            publishedAt: now - 2 * 3_600_000,
+            dateBasis: 'exact',
+          },
+          // Kept in the file, but outside the retention window, so never counted.
+          {
+            url: 'https://www.reddit.com/r/Test/comments/old999/stale/',
+            title: 'Stale thread',
+            publishedAt: now - 90 * 3_600_000,
+          },
+        ],
+      },
+    },
+  };
+
+  assert.equal(parseRedditCapture(null), null);
+  assert.equal(parseRedditCapture({ subreddits: [] }), null);
+
+  const capture = parseRedditCapture(raw);
+  const outcome = redditCaptureRecordsFor(capture, def, { now });
+  assert.equal(outcome.status, 'cached');
+  assert.equal(outcome.records.length, 1);
+  assert.equal(outcome.records[0].sourceId, 'reddit-test');
+  assert.equal(outcome.records[0].channel, 'r/Test');
+  assert.match(outcome.note, /1 h ago/);
+
+  // Subreddits match without case, so a capture keyed by the feed name still lands.
+  assert.equal(redditCaptureRecordsFor(capture, { ...def, sub: 'tEsT' }, { now }).records.length, 1);
+  // A subreddit with no entry falls through to the live feed instead of inventing posts.
+  assert.equal(redditCaptureRecordsFor(capture, { ...def, sub: 'Unknown' }, { now }), null);
+  // Past REDDIT_CAPTURE.maxAgeHours the capture is ignored entirely.
+  assert.equal(redditCaptureRecordsFor(capture, def, { now: now + 48 * 3_600_000 }), null);
 });
 
 /* ---------- optional LLM enrichment ---------- */
