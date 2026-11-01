@@ -428,7 +428,10 @@ export async function loadInstagramSource(def, ctx) {
   if (profile.posts.length === 0) {
     // The host is refused a rendered profile (the runner case): try the coarse route.
     const fallback = await loadInstagramFallback(def, ctx);
-    if (fallback.records.length > 0 || fallback.snapshot) return { ...fallback, snapshot: fallback.snapshot ?? snapshot };
+    // Keep a specific fallback failure visible instead of flattening it to "login shell".
+    if (fallback.records.length > 0 || fallback.status === 'unavailable') {
+      return { ...fallback, snapshot: fallback.snapshot ?? snapshot };
+    }
     return {
       status: 'malformed',
       error: 'No posts found in the profile page.',
