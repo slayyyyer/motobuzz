@@ -9,6 +9,7 @@ import { extractChannelVideos } from '../src/adapters/youtube.js';
 import {
   extractPostMeta,
   extractProfile,
+  isMetadataRateLimited,
   parseMicrolinkPost,
   parseSearchCodes,
   shortcodeFromPk,
@@ -243,6 +244,8 @@ test('reads metadata for one post and centres its unknown hour at midday', () =>
   assert.match(post.caption, /KENNY TAKES/);
   assert.equal(parseMicrolinkPost({ data: {} }, 'x'), null);
   assert.equal(parseMicrolinkPost(null, 'x'), null);
+  assert.equal(isMetadataRateLimited({ status: 'fail', code: 'ERATE', message: 'daily' }), true);
+  assert.equal(isMetadataRateLimited({ status: 'success', data: {} }), false);
 });
 
 test('reads a post page for its publish time and engagement', () => {

@@ -226,6 +226,11 @@ function fallbackIsDue(now) {
   return hours % INSTAGRAM_FALLBACK.intervalHours === 0;
 }
 
+/** microlink reports exhausted quota as status fail with code ERATE. */
+export function isMetadataRateLimited(payload) {
+  return payload?.status === 'fail' && /ERATE|rate limit/i.test(`${payload?.code || ''} ${payload?.message || ''}`);
+}
+
 /**
  * Coarse route for hosts Instagram refuses: find permalinks with DuckDuckGo,
  * read the unseen ones through microlink. Capped hard, because the free tier is
@@ -256,6 +261,17 @@ export async function loadInstagramFallback(def, ctx) {
   const codes = parseSearchCodes(search.body)
     .slice(0, INSTAGRAM_FALLBACK.searchResults)
     .filter((code) => !seenPostCodes.has(code));
+
+  // DuckDuckGo answers a suspected bot with 202 and a challenge page, not results.
+  if (search.status === 202 || /challenge|captcha|anomaly/i.test(search.body)) {
+    return {
+      status: 'unavailable',
+      error: 'Search refused the query with a bot challenge.',
+      records: [],
+      note: null,
+      snapshot: null,
+    };
+  }
   if (codes.length === 0) {
     return {
       status: 'empty',
@@ -269,6 +285,7 @@ export async function loadInstagramFallback(def, ctx) {
   const records = [];
   const posts = [];
   let consulted = 0;
+  let rateLimited = false;
 
   for (const code of codes) {
     if (consulted >= INSTAGRAM_FALLBACK.metadataCallsPerRun) break;
@@ -280,9 +297,19 @@ export async function loadInstagramFallback(def, ctx) {
     try {
       const response = await fetchText(
         `${INSTAGRAM_FALLBACK.metadataUrl}?url=${encodeURIComponent(`${BASE}/p/${code}/`)}`,
-        { relay, accept: 'application/json', timeoutMs: INGEST.instagramTimeoutMs },
+        {
+          relay,
+          headers: { 'user-agent': INSTAGRAM_FALLBACK.searchUserAgent },
+          accept: 'application/json',
+          timeoutMs: INGEST.instagramTimeoutMs,
+        },
       );
-      post = parseMicrolinkPost(JSON.parse(response.body), code);
+      const payload = JSON.parse(response.body);
+      if (isMetadataRateLimited(payload)) {
+        rateLimited = true;
+        break;
+      }
+      post = parseMicrolinkPost(payload, code);
     } catch {
       post = null;
     }
@@ -331,6 +358,16 @@ export async function loadInstagramFallback(def, ctx) {
     via: 'search+metadata',
     posts,
   };
+
+  if (rateLimited && records.length === 0) {
+    return {
+      status: 'unavailable',
+      error: 'Metadata API daily limit reached.',
+      records: [],
+      note: null,
+      snapshot,
+    };
+  }
 
   if (records.length === 0) {
     return {
