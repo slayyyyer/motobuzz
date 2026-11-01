@@ -337,6 +337,24 @@ export const INSTAGRAM_PROFILES = Object.freeze([
 ]);
 
 /**
+ * Coarse route for hosts Instagram refuses: DuckDuckGo finds post permalinks and
+ * microlink reads one post from its own infrastructure. It reports the publish
+ * DAY, so its records are marked as day-precision, and the free tier is small —
+ * hence the interval and the hard per-run call cap.
+ */
+export const INSTAGRAM_FALLBACK = Object.freeze({
+  searchUrl: 'https://html.duckduckgo.com/html/',
+  metadataUrl: 'https://api.microlink.io/',
+  searchUserAgent:
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+  /** Run discovery only every N hours: the metadata API allows tens of calls a day. */
+  intervalHours: 3,
+  searchResults: 10,
+  metadataCallsPerRun: 6,
+  postsPerProfile: 2,
+});
+
+/**
  * Optional operator-run RSS bridge (a self-hosted RSSHub, for example) for X,
  * which still refuses anonymous reads. Nothing is fetched from it unless
  * MOTOBUZZ_BRIDGE_URL is set for the build.

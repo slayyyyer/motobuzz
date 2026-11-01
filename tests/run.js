@@ -6,7 +6,13 @@ import assert from 'node:assert/strict';
 
 import { parseFeed, parseDate } from '../src/adapters/feed.js';
 import { extractChannelVideos } from '../src/adapters/youtube.js';
-import { extractPostMeta, extractProfile, shortcodeFromPk } from '../src/adapters/instagram.js';
+import {
+  extractPostMeta,
+  extractProfile,
+  parseMicrolinkPost,
+  parseSearchCodes,
+  shortcodeFromPk,
+} from '../src/adapters/instagram.js';
 import {
   applyEnrichment,
   enrichLabels,
@@ -211,6 +217,32 @@ test('a page with no timeline yields no posts rather than throwing', () => {
 test('media ids turn into the post shortcodes Instagram uses', () => {
   assert.equal(shortcodeFromPk('4019950133779236635'), 'DfJu1kasgcb');
   assert.equal(shortcodeFromPk('not-a-number'), null);
+});
+
+test('finds post permalinks in plain and encoded search results', () => {
+  const plain =
+    '<a href="https://www.instagram.com/p/DfJu1kasgcb/">x</a>' +
+    '<a href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.instagram.com%2Freel%2FDNic4H4gD7W%2F">y</a>';
+  assert.deepEqual(parseSearchCodes(plain), ['DfJu1kasgcb', 'DNic4H4gD7W']);
+  assert.deepEqual(parseSearchCodes('<html>no links</html>'), []);
+});
+
+test('reads metadata for one post and centres its unknown hour at midday', () => {
+  const payload = {
+    data: {
+      date: '2026-10-31T00:00:00.000Z',
+      description: '13K likes, 48 comments - ausxsupercross on October 31, 2026: "KENNY TAKES THE WIN IN AUCKLAND".',
+    },
+  };
+  const post = parseMicrolinkPost(payload, 'DfJu1kasgcb');
+  assert.equal(post.likes, 13_000);
+  assert.equal(post.comments, 48);
+  assert.equal(post.author, 'ausxsupercross');
+  assert.equal(post.publishedAt, Date.parse('2026-10-31T12:00:00.000Z'));
+  assert.equal(post.dateBasis, 'day');
+  assert.match(post.caption, /KENNY TAKES/);
+  assert.equal(parseMicrolinkPost({ data: {} }, 'x'), null);
+  assert.equal(parseMicrolinkPost(null, 'x'), null);
 });
 
 test('reads a post page for its publish time and engagement', () => {
@@ -633,7 +665,9 @@ test('allows known upstreams', () => {
   assert.equal(matchUpstream('https://www.reddit.com/r/Motocross/.rss').allowed, true);
   assert.equal(matchUpstream('https://www.youtube.com/@vitalmx/videos').allowed, true);
   assert.equal(matchUpstream('https://www.instagram.com/kenroczen94/').allowed, true);
-  assert.equal(matchUpstream('https://www.instagram.com/p/DfJu1kasgcb/').rule.crawlerUa, true);
+  assert.equal(typeof matchUpstream('https://www.instagram.com/p/DfJu1kasgcb/').rule.userAgent, 'string');
+  assert.equal(matchUpstream('https://api.microlink.io/?url=x').allowed, true);
+  assert.equal(matchUpstream('https://html.duckduckgo.com/html/?q=x').allowed, true);
 });
 
 test('refuses everything else', () => {

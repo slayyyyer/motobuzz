@@ -1,17 +1,24 @@
 /**
  * Instagram adapter.
  *
- * Instagram serves a logged-out browser a 500 KB JavaScript shell containing no
- * posts at all. It serves a crawler user agent the same URL with a rendered page
- * holding a `polaris_timeline_connection` blob: recent posts, their captions and
- * media ids. Each post's own page then carries the exact publish time and the
- * like/comment counts in its metadata.
+ * Two routes, in order:
  *
- * That is undocumented markup, so every failure is reported (malformed / empty)
- * rather than swallowed, and nothing here fabricates a date. Posts whose post
- * page cannot be read are dropped instead of being stamped with "now".
+ * 1. The profile page. Instagram serves a browser a login shell, but a crawler
+ *    user agent gets the rendered page with a `polaris_timeline_connection`
+ *    blob, and each post's own page carries an exact publish time plus its
+ *    like/comment counts. This is the accurate route and needs no third party.
+ *
+ * 2. A fallback for hosts Instagram refuses (GitHub's runners get the login
+ *    shell whatever the user agent). DuckDuckGo finds recent post permalinks,
+ *    and the microlink metadata API reads one post from its own infrastructure,
+ *    which is not blocked. That route is coarse: microlink reports the publish
+ *    DAY, not the hour, so its records are stamped at midday UTC and marked
+ *    `dateBasis: 'day'` rather than being passed off as exact.
+ *
+ * Every failure is reported (malformed / empty) instead of swallowed, and no
+ * record is ever dated "now".
  */
-import { DECAY, INGEST, INSTAGRAM_CRAWLER_UA, INSTAGRAM_PROFILES } from '../config.js';
+import { DECAY, INGEST, INSTAGRAM_CRAWLER_UA, INSTAGRAM_FALLBACK, INSTAGRAM_PROFILES } from '../config.js';
 import { decodeEntities, httpsUrl, parseCount, truncate } from '../lib/text.js';
 import { fetchText, sleep } from './http.js';
 
@@ -165,20 +172,205 @@ export function extractPostMeta(html) {
   };
 }
 
-/**
- * @param {ReturnType<typeof instagramSourceDefs>[number]} def
- * @param {{relay?: string|null, now: number, fetchedAt: number}} ctx
- */
-export async function loadInstagramSource(def, ctx) {
-  const { relay = null, now = Date.now(), fetchedAt = now } = ctx;
-  const headers = { 'user-agent': INSTAGRAM_CRAWLER_UA };
+/** Post permalinks out of a DuckDuckGo results page, plain or URL-encoded. */
+export function parseSearchCodes(html) {
+  const source = decodeEntities(String(html || ''));
+  const codes = new Set();
+  for (const match of source.matchAll(/instagram\.com\/(?:p|reel)\/([A-Za-z0-9_-]{6,})/g)) codes.add(match[1]);
+  for (const match of source.matchAll(/instagram\.com%2F(?:p|reel)%2F([A-Za-z0-9_-]{6,})/gi)) codes.add(match[1]);
+  return [...codes];
+}
 
-  const page = await fetchText(def.url, {
+/**
+ * Read one post from a microlink response. The description is Instagram's own
+ * og:description, so the counts are real; the date is day-precision, which is
+ * why the returned timestamp sits at midday UTC and callers mark it as coarse.
+ */
+export function parseMicrolinkPost(payload, code) {
+  const data = payload?.data;
+  if (!data) return null;
+
+  const description = decodeEntities(String(data.description || ''));
+  const likes = description.match(/([\d.,]+\s*[kmb]?)\s+likes?\b/i);
+  const comments = description.match(/([\d.,]+\s*[kmb]?)\s+comments?\b/i);
+  const author = description.match(/-\s*([A-Za-z0-9._]+)\s+on\s+/);
+  const caption = description.match(/:\s*[“"]([\s\S]+?)[”"]\.?\s*$/);
+  const stated = description.match(/on\s+([A-Z][a-z]+ \d{1,2}, \d{4})/);
+
+  let publishedAt = null;
+  const parsedDate = data.date ? Date.parse(data.date) : Number.NaN;
+  if (Number.isFinite(parsedDate)) publishedAt = parsedDate;
+  else if (stated) {
+    const parsedStated = Date.parse(stated[1]);
+    if (Number.isFinite(parsedStated)) publishedAt = parsedStated;
+  }
+  if (!Number.isFinite(publishedAt)) return null;
+
+  // Centre the unknown hour in the reported day rather than inventing one.
+  const at = new Date(publishedAt);
+  const centred = Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate(), 12, 0, 0);
+
+  return {
+    code,
+    author: author ? author[1] : null,
+    likes: likes ? parseCount(likes[1]) : null,
+    comments: comments ? parseCount(comments[1]) : null,
+    caption: caption ? caption[1].trim() : null,
+    publishedAt: centred,
+    dateBasis: 'day',
+  };
+}
+
+function fallbackIsDue(now) {
+  const hours = Math.floor(now / 3_600_000);
+  return hours % INSTAGRAM_FALLBACK.intervalHours === 0;
+}
+
+/**
+ * Coarse route for hosts Instagram refuses: find permalinks with DuckDuckGo,
+ * read the unseen ones through microlink. Capped hard, because the free tier is
+ * small and this must never become the load-bearing path.
+ */
+export async function loadInstagramFallback(def, ctx) {
+  const { relay = null, now = Date.now(), fetchedAt = now, seenPostCodes = new Set() } = ctx;
+  const headers = { 'user-agent': INSTAGRAM_FALLBACK.searchUserAgent };
+
+  if (!fallbackIsDue(now)) {
+    return {
+      status: 'empty',
+      error: null,
+      records: [],
+      note: 'Coarse fallback runs every few hours; nothing due this run.',
+      snapshot: null,
+    };
+  }
+
+  const query = `site:instagram.com/p ${def.handle}`;
+  const search = await fetchText(`${INSTAGRAM_FALLBACK.searchUrl}?q=${encodeURIComponent(query)}`, {
     relay,
     headers,
     accept: 'text/html,application/xhtml+xml',
     timeoutMs: INGEST.instagramTimeoutMs,
   });
+
+  const codes = parseSearchCodes(search.body)
+    .slice(0, INSTAGRAM_FALLBACK.searchResults)
+    .filter((code) => !seenPostCodes.has(code));
+  if (codes.length === 0) {
+    return {
+      status: 'empty',
+      error: null,
+      records: [],
+      note: 'Search found no post permalinks this profile has not already supplied.',
+      snapshot: null,
+    };
+  }
+
+  const records = [];
+  const posts = [];
+  let consulted = 0;
+
+  for (const code of codes) {
+    if (consulted >= INSTAGRAM_FALLBACK.metadataCallsPerRun) break;
+    if (records.length >= INSTAGRAM_FALLBACK.postsPerProfile) break;
+    consulted += 1;
+    if (consulted > 1) await sleep(INGEST.instagramSpacingMs);
+
+    let post = null;
+    try {
+      const response = await fetchText(
+        `${INSTAGRAM_FALLBACK.metadataUrl}?url=${encodeURIComponent(`${BASE}/p/${code}/`)}`,
+        { relay, accept: 'application/json', timeoutMs: INGEST.instagramTimeoutMs },
+      );
+      post = parseMicrolinkPost(JSON.parse(response.body), code);
+    } catch {
+      post = null;
+    }
+    if (!post) continue;
+    // The search may surface other accounts quoting this rider; only keep the profile's own posts.
+    if (post.author && post.author.toLowerCase() !== def.handle.toLowerCase()) continue;
+    if (now - post.publishedAt > DECAY.social.maxAgeHours * 3_600_000) continue;
+
+    const url = httpsUrl(`${BASE}/p/${code}/`);
+    if (!url) continue;
+
+    posts.push({
+      shortcode: code,
+      caption: post.caption ? truncate(post.caption, INGEST.maxSummaryLength) : null,
+      publishedAt: post.publishedAt,
+      likes: post.likes,
+      comments: post.comments,
+      dateBasis: 'day',
+    });
+
+    records.push({
+      sourceId: def.id,
+      kind: 'social',
+      publisher: def.label,
+      publisherUrl: httpsUrl(def.homepage),
+      title: truncate(post.caption || `Instagram post by @${def.handle}`, INGEST.maxTitleLength),
+      summary: null,
+      url,
+      publishedAt: post.publishedAt,
+      fetchedAt,
+      engagement: post.likes,
+      engagementLabel: post.likes === null ? null : 'likes',
+      replies: post.comments,
+      channel: `@${def.handle}`,
+      dateBasis: 'day',
+    });
+  }
+
+  const snapshot = {
+    handle: def.handle,
+    url: def.url,
+    username: def.handle,
+    fullName: null,
+    followers: null,
+    biography: null,
+    via: 'search+metadata',
+    posts,
+  };
+
+  if (records.length === 0) {
+    return {
+      status: 'empty',
+      error: null,
+      records: [],
+      note: 'Coarse fallback found no readable post metadata.',
+      snapshot,
+    };
+  }
+
+  return { status: 'live', error: null, records, note: 'Coarse fallback: day-precision dates.', snapshot };
+}
+
+/**
+ * @param {ReturnType<typeof instagramSourceDefs>[number]} def
+ * @param {{relay?: string|null, now: number, fetchedAt: number, seenPostCodes?: Set<string>}} ctx
+ */
+export async function loadInstagramSource(def, ctx) {
+  const { relay = null, now = Date.now(), fetchedAt = now } = ctx;
+  const headers = { 'user-agent': INSTAGRAM_CRAWLER_UA };
+
+  let page = null;
+  let pageError = null;
+  try {
+    page = await fetchText(def.url, {
+      relay,
+      headers,
+      accept: 'text/html,application/xhtml+xml',
+      timeoutMs: INGEST.instagramTimeoutMs,
+    });
+  } catch (error) {
+    pageError = error;
+  }
+
+  if (!page) {
+    const fallback = await loadInstagramFallback(def, ctx);
+    if (fallback.records.length > 0) return fallback;
+    throw pageError;
+  }
 
   if (!/<html[\s>]/i.test(page.body.slice(0, 4000))) {
     return { status: 'malformed', error: 'Profile page was not HTML.', records: [], note: null, snapshot: null };
@@ -192,15 +384,19 @@ export async function loadInstagramSource(def, ctx) {
     fullName: profile.fullName,
     followers: profile.followers,
     biography: profile.biography,
+    via: 'profile page',
     posts: [],
   };
 
   if (profile.posts.length === 0) {
+    // The host is refused a rendered profile (the runner case): try the coarse route.
+    const fallback = await loadInstagramFallback(def, ctx);
+    if (fallback.records.length > 0 || fallback.snapshot) return { ...fallback, snapshot: fallback.snapshot ?? snapshot };
     return {
       status: 'malformed',
       error: 'No posts found in the profile page.',
       records: [],
-      note: 'Instagram markup may have changed, or the account is private.',
+      note: 'Instagram served the login shell, and the coarse fallback found nothing.',
       snapshot,
     };
   }
@@ -237,6 +433,7 @@ export async function loadInstagramSource(def, ctx) {
       likes: meta?.likes ?? null,
       comments: meta?.comments ?? null,
       isVideo: post.isVideo,
+      dateBasis: 'exact',
     };
     snapshot.posts.push(entry);
 
@@ -260,6 +457,7 @@ export async function loadInstagramSource(def, ctx) {
       engagementLabel: entry.likes === null ? null : 'likes',
       replies: entry.comments,
       channel: `@${def.handle}`,
+      dateBasis: 'exact',
     });
   }
 

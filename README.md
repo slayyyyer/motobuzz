@@ -105,6 +105,14 @@ but the same URL fetched with a crawler user agent returns a rendered page conta
 post's own page carries the exact publish time plus its like and comment counts. Handles live in `INSTAGRAM_PROFILES`
 and were checked against the live pages: a wrong handle still answers 200, but as a small account with zero posts.
 
+**When Instagram refuses the host, a coarse fallback takes over.** GitHub's runners get the login shell whatever the
+user agent, so for those hosts DuckDuckGo finds recent post permalinks and the microlink metadata API reads the post
+from its own infrastructure. That route is intentionally small — discovery runs every few hours, at most six metadata
+calls and two posts per profile per run, and permalinks already seen are skipped — because the API's free tier is
+tiny. It also only knows the publish **day**, so those records are stamped at midday UTC with `dateBasis: "day"`
+instead of being presented as exact times. If both routes fail, the source reports `malformed` and the rest of the
+site is unaffected.
+
 **X is not scraped.** It still refuses anonymous reads. If you run your own RSS bridge (RSSHub, for example), set
 `MOTOBUZZ_BRIDGE_URL` for the build and the handles in `BRIDGE_HANDLES` are read through it, labelled as bridged.
 Without it those sources report `not configured` on the page.

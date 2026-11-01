@@ -82,10 +82,10 @@ async function readPreviousCache() {
   return null;
 }
 
-async function runSource(def, loader) {
+async function runSource(def, loader, extra = {}) {
   const started = Date.now();
   try {
-    const outcome = await loader(def, { relay, now, fetchedAt });
+    const outcome = await loader(def, { relay, now, fetchedAt, ...extra });
     return {
       def,
       status: outcome.status,
@@ -127,6 +127,7 @@ function normalizeRecord(record) {
     engagement: Number.isFinite(record.engagement) ? record.engagement : null,
     engagementLabel: record.engagementLabel || null,
     replies: Number.isFinite(record.replies) ? record.replies : null,
+    dateBasis: record.dateBasis === 'day' ? 'day' : 'exact',
     topics: labels.topics,
     entities: labels.entities,
     region: labels.region,
@@ -154,6 +155,14 @@ async function saveSocialSnapshots(attempts) {
 async function main() {
   log(`MotoBuzz cache build — ${new Date(now).toISOString()}${relay ? ` via ${relay}` : ' (direct)'}`);
 
+  // The Instagram fallback needs to know which permalinks earlier runs already covered.
+  const previous = await readPreviousCache();
+  const seenPostCodes = new Set();
+  for (const item of previous?.items ?? []) {
+    const match = String(item.url || '').match(/instagram\.com\/p\/([A-Za-z0-9_-]{6,})/);
+    if (match) seenPostCodes.add(match[1]);
+  }
+
   const newsDefs = newsSourceDefs();
   const redditDefs = redditSourceDefs();
   const youtubeDefs = youtubeSourceDefs();
@@ -175,7 +184,7 @@ async function main() {
 
   const instagramResults = [];
   for (const def of instagramDefs) {
-    instagramResults.push(await runSource(def, loadInstagramSource));
+    instagramResults.push(await runSource(def, loadInstagramSource, { seenPostCodes }));
   }
 
   const bridgeResults = [];
@@ -198,7 +207,6 @@ async function main() {
   const attempts = [...concurrent, ...redditResults, ...instagramResults, ...bridgeResults];
 
   // --- continuity -----------------------------------------------------------
-  const previous = await readPreviousCache();
   const previousSources = new Map(
     (previous?.sources || []).filter((source) => source?.sourceId).map((source) => [source.sourceId, source]),
   );
