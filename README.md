@@ -208,7 +208,9 @@ PORT=8099 HOST=0.0.0.0 npm start
 4. Optionally add `MOTOBUZZ_BRIDGE_URL` as a repository variable (not a secret) if you run a social bridge.
 5. Run **Buzz cache and Pages** from the Actions tab, or push to `main`.
 
-The workflow runs at minute 23 of every hour, on every push to `main`, and on manual dispatch. If every source fails,
+The workflow runs at minute 23 of every hour, on every push to `main`, and on manual dispatch. Because nothing is
+committed between builds, GitHub would otherwise disable the hourly trigger after 60 days without repository activity;
+a `keepalive` job re-enables the workflow through the API on every scheduled run, which resets that counter. If every source fails,
 the builder exits non-zero and the previous successful deployment stays online. Partial failures still deploy, with
 each source's state shown on the page.
 

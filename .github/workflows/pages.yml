@@ -78,6 +78,20 @@ jobs:
         with:
           path: dist
 
+  keepalive:
+    # GitHub disables a scheduled workflow after 60 days without repository activity.
+    # Each hourly run re-enables its own schedule through the API, which resets that
+    # counter, so the cron never reaches the inactivity limit.
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Keep the hourly schedule enabled
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh api --method PUT "repos/${{ github.repository }}/actions/workflows/pages.yml/enable"
+
   deploy:
     needs: build
     runs-on: ubuntu-latest
