@@ -46,9 +46,8 @@ renders it. There is no CORS, no pagination, no key in client code, no per-visit
 of the site on a laptop with the network unplugged and a cache file on disk renders correctly.
 
 **The measurement must never invent.** No record may carry a date no source published, an
-engagement number no source showed, or a URL that does not resolve. Where a source reports only
-a day, the record says so (`dateBasis: "day"`) and is not presented as an exact time. Where a
-source cannot be read, the page reports the source's condition rather than filling the gap.
+engagement number no source showed, or a URL that does not resolve. Where a source cannot be
+read, the page reports the source's condition rather than filling the gap.
 
 Everything that follows is a consequence of those four.
 
@@ -175,8 +174,7 @@ from.
 | `channel` | `@handle`, or null |
 | `publishedAt` | Epoch milliseconds, from the source |
 | `fetchedAt` | When this build read it |
-| `engagement`, `replies` | Social audience counts, or null |
-| `dateBasis` | `exact` or `day` — never a guess presented as exact |
+| `engagement` | Social audience count (YouTube views), or null |
 | `topics`, `entities`, `region` | Added by `classify()` |
 
 `src/engine/validate.js` enforces this again on the way out: a record with a non-HTTPS URL, an
@@ -189,13 +187,13 @@ refused.
 
 ## 5. Ingestion
 
-Twenty-seven configured sources, in four families.
+Thirty configured sources, in four families.
 
 | Family | Count | Adapter | Limit | Refusal behaviour |
 | --- | --- | --- | --- | --- |
-| Direct RSS feeds | 4 | `news.js` | 30 items | `unavailable` / `malformed` |
+| Direct RSS feeds | 7 | `news.js` | 30 items | `unavailable` / `malformed` |
 | Google News queries | 12 | `news.js` | 30 items | same |
-| YouTube channels | 9 | `youtube.js` | 12 videos | `malformed` on markup change |
+| YouTube channels | 9 | `youtube.js` | 12 videos | `malformed` if feed and page both fail |
 | (X via operator bridge) | 2 | `bridge.js` | 12 posts | `unconfigured` by default |
 
 The Google News queries are not a convenience. Racer X, Vital MX, Dirt Bike, and Motocross Action
@@ -222,8 +220,15 @@ Each adapter normalizes on the way in and refuses to invent on the way out:
 - **RSS/Atom** (`feed.js`) parses both dialects, keeps `<pubDate>`/`<updated>`, and distinguishes
   *malformed* (bytes arrived, nothing parsed) from *empty* (parsed fine, no items). That
   distinction is what the page shows, because they mean different things to an operator.
-- **YouTube** scrapes the channel page. It is best-effort by construction; when the markup
-  changes those sources report `malformed` and everything else keeps working.
+- **YouTube** reads the channel's public Atom feed first, because it is documented, carries
+  exact publish times and view counts, and needs no key. The channel page is the fallback, since
+  the feed only returns the newest fifteen uploads and has had outages. When neither route
+  parses, the source reports `malformed` and a small excerpt is kept under `data/diagnostics/`
+  for diagnosis; everything else keeps working.
+
+Google News records are also capped at six per publisher per build, counted across queries, so a
+single outlet's syndication cannot fill the index's share of the board. Across eleven stored
+builds no publisher exceeded four records, so the cap is a guard rather than a trim.
 
 A filter runs before any headline counts: `NEWS_TITLE_DENYLIST` removes search-index spam —
 "watch live", "live stream", bracketed CJK spam — that is technically a motocross headline and
@@ -254,6 +259,11 @@ A build that fails is not a build that forgets.
 Retention is bounded by the same decay schedule as the score: a news record is eligible for 48
 hours after publication, a social record for 72. Records that survive are re-scored with the rest,
 so a carried record decays exactly as an uncarried one would.
+
+A record whose source is no longer configured is not carried at all. Removing a source from
+`config.js` therefore removes its records on the next build instead of letting them ride the
+retention window for up to three days. The filter is in `src/engine/pipeline.js` and is covered
+by a fixture test, because this is exactly the kind of rule that fails silently.
 
 ---
 
@@ -332,8 +342,8 @@ energy = kind weight × engagement × 2^(−age in hours ÷ half-life in hours)
 - `kind weight` is 1 for news and 0.9 for social — a published story counts slightly more than a
   post, without pretending social is unimportant.
 - `engagement` is 1 for news. For social it is
-  `1 + log10(1 + likes)/1.6 + log10(1 + replies)/3.2`, a logarithmic scale so a viral post counts
-  for much more than an ignored one but cannot swallow the board.
+  `1 + log10(1 + views)/1.6`, a logarithmic scale so a widely watched video counts for much more
+  than an ignored one but cannot swallow the board.
 - Recency is a half-life decay, not a step function: a record does not vanish at a boundary, it
   fades.
 
@@ -357,12 +367,21 @@ energy = kind weight × engagement × 2^(−age in hours ÷ half-life in hours)
 ### 9.2 The meter
 
 ```
-score = 100 × (1 − e^(−total energy ÷ 26))
+score = 100 × (1 − e^(−total energy ÷ 18))
 ```
 
 An exponential saturation: the first few stories move the needle steeply, and past a certain
 volume the meter flattens, because "everything is happening at once" is genuinely hard to
-distinguish from "a bit more is happening". 26 is the energy at which the meter reads about 63.
+distinguish from "a bit more is happening". 18 is the energy at which the meter reads about 63.
+
+The constant is not a taste. When Instagram and Reddit were removed, the source mix changed and
+the old 26 left the top three bands unreachable: eleven stored builds, with the removed sources
+filtered out, had 24-hour energies of 6.3 to 13.4 and a median of 12.1, which scored 21–40. At 18
+the same sample spans 29–52 with the median at 49, so an ordinary off-season day reads Idling to
+Warming up and the hot bands stay available for a race weekend. `npm run calibrate` prints the
+distribution and the constant that would put the median at 50, so the next recalibration is
+evidence rather than guesswork. The sample contains no race weekend, which is the trigger to run
+it again.
 
 | Score | Label | Reading |
 | --- | --- | --- |
@@ -478,6 +497,10 @@ invalid envelope is refused **whole**, so a broken snapshot cannot replace a goo
 `localStorage` holds exactly one key: the previous visit time, used for the "since you last
 looked" line. No cookies, no analytics, no third-party scripts, no fonts.
 
+When fewer than 70% of configured sources answered, the page prints a thin-build note beside the
+score. The score is not rescaled: a quiet week and a failed fetch are different claims, and only
+one of them is about the sport.
+
 ---
 
 ## 12. What this measurement cannot say
@@ -497,10 +520,12 @@ looked" line. No cookies, no analytics, no third-party scripts, no fonts.
 
 ## 13. Tests and reproducibility
 
-`npm test` runs 54 tests on Node's built-in assertions, with no test framework and no
+`npm test` runs 63 tests on Node's built-in assertions, with no test framework and no
 dependencies: text decoding and normalization, RSS and Atom parsing, malformed-versus-empty
-diagnostics, the YouTube extractor against a fixture, classifier and alias safety (including the surnames that must *not* match), decay,
-momentum, saturation, bucket accounting, cache validation, and the relay allowlist.
+diagnostics, the YouTube channel feed and page extractor against fixtures, classifier and alias
+safety (including the surnames that must *not* match), decay, momentum, saturation, bucket
+accounting, cache validation, the relay allowlist, continuity and dedupe, retained-source
+filtering, source status, the thin-build note, diagnostics, and the Atom feed.
 
 Everything in this paper can be reproduced without credentials:
 
@@ -509,6 +534,9 @@ npm test                                          # the suite
 npm start                                         # static server + relay on :8080
 npm run cache:local                               # build through the relay
 node scripts/build-buzz-cache.js --out /tmp/c.json # build directly, no relay
+npm run calibrate                                 # score distribution of stored caches
+npm run watchlist:audit                           # quiet riders and unwatched names
+node scripts/build-feed.js data/buzz-cache.json dist/feed.xml  # the Atom output
 ```
 
 The build prints every source with its status and record count, then the score, the momentum, the
@@ -522,6 +550,9 @@ it ran.
 ```
 .github/workflows/pages.yml   schedule, test gate, relay, build, artifact, deploy
 scripts/build-buzz-cache.js   the pipeline in Figure 2
+scripts/build-feed.js         Atom feed from the cache
+scripts/calibrate.js          score distribution and recalibration suggestion
+scripts/watchlist-audit.js    quiet riders and unwatched names
 proxy/server.js               dev server + allowlisted relay
 proxy/allowlist.js            every upstream the relay may reach
 src/config.js                 sources, watchlist, topics, decay, thresholds
@@ -529,7 +560,10 @@ src/adapters/                 news, youtube, bridge, feed parser, http
 src/engine/classify.js        topics, entities, region (§8)
 src/engine/enrich.js          optional LLM labelling, closed id list (§8)
 src/engine/score.js           energy, decay, momentum, tables, headline (§9)
+src/engine/pipeline.js        continuity, dedupe, source status
+src/engine/feed.js            Atom feed generation
+src/engine/diagnostics.js     excerpt writing for failed parses
 src/engine/validate.js        the record and envelope rules (§4, §12)
 src/app/                      cache loader, renderer, bootstrap, formatters
-tests/run.js                  the suite (§14)
+tests/run.js                  the suite (§13)
 ```

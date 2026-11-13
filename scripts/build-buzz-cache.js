@@ -21,21 +21,24 @@ import process from 'node:process';
 
 import {
   CACHE_SCHEMA_VERSION,
+  DIAGNOSTICS_PATH,
   ENTITY_BY_ID,
   FETCH,
   INGEST,
+  NEWS_PUBLISHER_CAP,
   SITE,
   WINDOW,
 } from '../src/config.js';
 import { sleep } from '../src/adapters/http.js';
-import { isJunkTitle, loadNewsSource, newsSourceDefs } from '../src/adapters/news.js';
+import { loadNewsSource, newsSourceDefs } from '../src/adapters/news.js';
 import { loadYoutubeSource, youtubeSourceDefs } from '../src/adapters/youtube.js';
 import { bridgeBase, bridgeSourceDefs, loadBridgeSource } from '../src/adapters/bridge.js';
 import { classify } from '../src/engine/classify.js';
-import { buildSnapshot, isEligible, stableId, urlKey } from '../src/engine/score.js';
+import { saveDiagnostics } from '../src/engine/diagnostics.js';
+import { buildSourceRows, dedupeRecords, retainPrevious } from '../src/engine/pipeline.js';
+import { buildSnapshot, stableId } from '../src/engine/score.js';
 import { validateCache } from '../src/engine/validate.js';
 import { enrichLabels } from '../src/engine/enrich.js';
-import { titleKey } from '../src/lib/text.js';
 
 const CONTEXT_KINDS = new Set(['brand', 'team', 'series']);
 
@@ -112,6 +115,7 @@ async function runSource(def, loader, extra = {}) {
       error: outcome.error ?? null,
       note: outcome.note ?? null,
       records: outcome.records || [],
+      diagnostic: outcome.diagnostic ?? null,
       fetchedAt,
       elapsedMs: Date.now() - started,
     };
@@ -122,6 +126,7 @@ async function runSource(def, loader, extra = {}) {
       error: errorText(error),
       note: null,
       records: [],
+      diagnostic: null,
       fetchedAt,
       elapsedMs: Date.now() - started,
     };
@@ -144,8 +149,6 @@ function normalizeRecord(record) {
     fetchedAt: record.fetchedAt || fetchedAt,
     engagement: Number.isFinite(record.engagement) ? record.engagement : null,
     engagementLabel: record.engagementLabel || null,
-    replies: Number.isFinite(record.replies) ? record.replies : null,
-    dateBasis: record.dateBasis === 'day' ? 'day' : 'exact',
     topics: labels.topics,
     entities: labels.entities,
     region: labels.region,
@@ -216,26 +219,16 @@ async function main() {
   // Continuity must not resurrect a source that config.js no longer names: its
   // old records would otherwise keep counting until they aged out.
   const configuredSourceIds = new Set(attempts.map((attempt) => attempt.def.id));
-  const retainedBySource = new Map();
-  const retained = [];
-  let unconfiguredRetained = 0;
-  if (previous) {
-    for (const item of previous.items) {
-      if (!isEligible(item, now)) continue;
-      // A headline the denylist would reject today must not survive by being old.
-      if (isJunkTitle(item.title)) continue;
-      if (!configuredSourceIds.has(item.sourceId)) {
-        unconfiguredRetained += 1;
-        continue;
-      }
-      retainedBySource.set(item.sourceId, (retainedBySource.get(item.sourceId) || 0) + 1);
-      retained.push(item);
-    }
-  }
+  const { retained, retainedBySource, unconfiguredRetained } = retainPrevious(previous, {
+    configuredSourceIds,
+    now,
+  });
 
   // --- collect --------------------------------------------------------------
   const ordered = [];
   let offTarget = 0;
+  let publisherCapped = 0;
+  const googlePublishers = new Map();
   for (const attempt of attempts) {
     const riderQuery = attempt.def.id.startsWith('gnews-riders-');
     for (const record of attempt.records) {
@@ -248,29 +241,24 @@ async function main() {
         offTarget += 1;
         continue;
       }
+      // One outlet's syndication should not fill the index's share of the board.
+      // The cap is counted per source and publisher, across all index queries.
+      if (attempt.def.type === 'google') {
+        const key = `${normalized.sourceId}|${normalized.publisher}`;
+        const used = googlePublishers.get(key) || 0;
+        if (used >= NEWS_PUBLISHER_CAP) {
+          publisherCapped += 1;
+          continue;
+        }
+        googlePublishers.set(key, used + 1);
+      }
       ordered.push(normalized);
     }
   }
   // Retained records come last so a freshly fetched copy always wins the dedupe.
   for (const item of retained) ordered.push(normalizeRecord(item));
 
-  const seenUrls = new Set();
-  const seenTitles = new Set();
-  const deduped = [];
-  let duplicates = 0;
-
-  for (const record of ordered) {
-    if (!isEligible(record, now)) continue;
-    const byUrl = urlKey(record.url);
-    const byTitle = titleKey(record.title);
-    if (seenUrls.has(byUrl) || (byTitle && seenTitles.has(byTitle))) {
-      duplicates += 1;
-      continue;
-    }
-    seenUrls.add(byUrl);
-    if (byTitle) seenTitles.add(byTitle);
-    deduped.push(record);
-  }
+  const { deduped, duplicates } = dedupeRecords(ordered, { now });
 
   // Trim to the ceiling before scoring, ranked by raw audience weight.
   const ranked = deduped
@@ -292,34 +280,7 @@ async function main() {
     itemCounts.set(item.sourceId, (itemCounts.get(item.sourceId) || 0) + 1);
   }
 
-  const sources = attempts.map((attempt) => {
-    const prior = previousSources.get(attempt.def.id);
-    const count = itemCounts.get(attempt.def.id) || 0;
-    const failed = attempt.status === 'unavailable' || attempt.status === 'malformed';
-    const carried = failed && (retainedBySource.get(attempt.def.id) || 0) > 0;
-    // A source that answered but had nothing inside the retention window is empty, not live.
-    const emptied = attempt.status === 'live' && count === 0;
-    // A query whose records were all already counted from an earlier source still
-    // answered: calling it empty would hide a group that did its job.
-    const deduped = emptied && attempt.records.length > 0;
-    return {
-      sourceId: attempt.def.id,
-      label: attempt.def.label,
-      provider: attempt.def.provider,
-      homepage: attempt.def.homepage,
-      kind: attempt.def.kind,
-      status: carried ? 'cached' : emptied && !deduped ? 'empty' : attempt.status,
-      error: attempt.error,
-      note: deduped
-        ? 'Answered; its records were duplicates or outside the window.'
-        : emptied
-          ? 'Answered, but nothing landed inside the retention window.'
-          : attempt.note,
-      fetchedAt: attempt.fetchedAt,
-      lastSuccessAt: attempt.status === 'live' ? attempt.fetchedAt : prior?.lastSuccessAt ?? null,
-      recordCount: count,
-    };
-  });
+  const sources = buildSourceRows(attempts, { itemCounts, previousSources, retainedBySource });
 
   const liveSources = sources.filter((source) => source.status === 'live').length;
   const recordedSources = sources.filter((source) => source.recordCount > 0).length;
@@ -342,6 +303,7 @@ async function main() {
       sourcesAttempted: sources.length,
       sourcesLive: liveSources,
       sourcesWithRecords: recordedSources,
+      liveShare: sources.length ? Number((liveSources / sources.length).toFixed(3)) : 0,
       enrichment: {
         configured: enrichment.configured,
         model: enrichment.model,
@@ -351,6 +313,8 @@ async function main() {
       },
       duplicatesDropped: duplicates,
       riderQueryOffTarget: offTarget,
+      publisherCapped,
+      publisherCap: NEWS_PUBLISHER_CAP,
       recordsPruned: pruned,
       recordsRetained: retained.length,
       recordsKept: items.length,
@@ -385,6 +349,7 @@ async function main() {
 
   await mkdir(dirname(outPath), { recursive: true });
   await writeFile(outPath, `${JSON.stringify(cache, null, 2)}\n`, 'utf8');
+  const diagnostics = await saveDiagnostics(attempts, { root: ROOT, directory: DIAGNOSTICS_PATH });
 
   // --- report ---------------------------------------------------------------
   reportSources();
@@ -400,6 +365,14 @@ async function main() {
     log(
       `  ${unconfiguredRetained} retained record${unconfiguredRetained === 1 ? '' : 's'} dropped: the source is no longer configured`,
     );
+  }
+  if (publisherCapped > 0) {
+    log(
+      `  ${publisherCapped} Google News record${publisherCapped === 1 ? '' : 's'} dropped: more than ${NEWS_PUBLISHER_CAP} from one publisher`,
+    );
+  }
+  if (diagnostics.length > 0) {
+    log(`  saved ${diagnostics.length} parse diagnostic${diagnostics.length === 1 ? '' : 's'} under ${DIAGNOSTICS_PATH}/`);
   }
   log(`  wrote ${outPath}`);
   if (enrichment.configured && enrichment.requested > 0) {

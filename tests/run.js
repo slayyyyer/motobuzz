@@ -3,9 +3,16 @@
  * dependencies, no fixtures on disk. Run with `npm test`.
  */
 import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { parseFeed, parseDate } from '../src/adapters/feed.js';
-import { extractChannelVideos } from '../src/adapters/youtube.js';
+import { extractChannelVideos, videosFromFeed } from '../src/adapters/youtube.js';
+import { buildAtomFeed } from '../src/engine/feed.js';
+import { saveDiagnostics } from '../src/engine/diagnostics.js';
+import { coverageNoteText } from '../src/app/render.js';
+import { buildSourceRows, dedupeRecords, retainPrevious } from '../src/engine/pipeline.js';
 import {
   applyEnrichment,
   enrichLabels,
@@ -38,10 +45,12 @@ import {
 import {
   BUZZ,
   DECAY,
+  FEEDS,
   NEWS_QUERIES,
   RIDER_QUERY_GROUP_SIZE,
   RIDERS,
   WINDOW,
+  YOUTUBE_CHANNELS,
 } from '../src/config.js';
 
 const tests = [];
@@ -172,6 +181,23 @@ test('extracts channel videos from the page JSON', () => {
 
 test('a page with no entries yields nothing rather than throwing', () => {
   assert.deepEqual(extractChannelVideos('<html><body>nope</body></html>', NOW), []);
+});
+
+const YT_FEED = `<?xml version="1.0" encoding="UTF-8"?><feed xmlns:yt="http://www.youtube.com/xml/schemas/2015"
+  xmlns:media="http://search.yahoo.com/mrss/" xmlns="http://www.w3.org/2005/Atom">
+<entry><id>yt:video:B2VWf8m_YLk</id><yt:videoId>B2VWf8m_YLk</yt:videoId>
+<title>Ranking Every 250SX Champion</title>
+<link rel="alternate" href="https://www.youtube.com/watch?v=B2VWf8m_YLk"/>
+<published>2026-11-11T16:00:14+00:00</published>
+<media:group><media:community><media:statistics views="9363"/></media:community></media:group>
+</entry></feed>`;
+
+test('reads a channel feed with its publish times and view counts', () => {
+  const videos = videosFromFeed(parseFeed(YT_FEED));
+  assert.equal(videos.length, 1);
+  assert.equal(videos[0].id, 'B2VWf8m_YLk');
+  assert.equal(videos[0].views, 9363);
+  assert.equal(videos[0].publishedAt, Date.parse('2026-11-11T16:00:14Z'));
 });
 
 /* ---------- optional LLM enrichment ---------- */
@@ -362,11 +388,113 @@ test('does not read "returns to Auckland" as an injury', () => {
   assert.ok(!labels.topics.includes('injury'));
 });
 
+test('the World Supercross series matches its official name', () => {
+  const labels = classify({ title: 'World Supercross announces its 2027 calendar', summary: null });
+  assert.ok(labels.entities.includes('wsx'));
+});
+
+test('every YouTube channel has a channel id and every news feed is allowlisted', () => {
+  for (const entry of YOUTUBE_CHANNELS) {
+    assert.match(entry.channelId, /^UC[\w-]{22}$/, `${entry.handle} has no channel id`);
+  }
+  for (const feed of FEEDS) {
+    assert.equal(matchUpstream(feed.url).allowed, true, `${feed.label} is not on the relay allowlist`);
+  }
+});
+
 test('drops live-stream spam headlines but keeps real ones', () => {
   assert.equal(isJunkTitle('『LIVeSTREAMS』 Boost Mobile AUSX Supercross 2026 today Live Updates!'), true);
   assert.equal(isJunkTitle('LIVE STREAM: AUSX Auckland round two'), true);
   assert.equal(isJunkTitle('Ken Roczen Extends with Suzuki for 2027'), false);
   assert.equal(isJunkTitle('How to watch: Herlings in the Japan finale'), false);
+});
+
+/* ---------- build pipeline ---------- */
+
+test('a retained record from a source no longer configured is dropped', () => {
+  const previous = {
+    items: [
+      record({ sourceId: 'ig-gone', url: 'https://example.com/ig' }),
+      record({ url: 'https://example.com/keep' }),
+      record({ url: 'https://example.com/old', publishedAt: NOW - 49 * HOUR }),
+      record({ url: 'https://example.com/junk', title: 'LIVE STREAM: Auckland' }),
+    ],
+  };
+  const out = retainPrevious(previous, { configuredSourceIds: new Set(['test']), now: NOW });
+  assert.equal(out.retained.length, 1);
+  assert.equal(out.retained[0].url, 'https://example.com/keep');
+  assert.equal(out.unconfiguredRetained, 1);
+  assert.equal(out.retainedBySource.get('test'), 1);
+});
+
+test('dedupe drops duplicates and records outside the window', () => {
+  const out = dedupeRecords(
+    [
+      record({ url: 'https://example.com/a' }),
+      record({ url: 'https://example.com/a/', title: 'Other copy' }),
+      record({ url: 'https://example.com/b', title: 'A headline' }),
+      record({ url: 'https://example.com/c', title: 'Too old', publishedAt: NOW - 49 * HOUR }),
+    ],
+    { now: NOW },
+  );
+  assert.equal(out.deduped.length, 1);
+  assert.equal(out.duplicates, 2);
+});
+
+test('a failed source that kept records reads as cached, not live', () => {
+  const attempts = [
+    { def: { id: 'a', label: 'A', kind: 'news' }, status: 'unavailable', records: [], error: 'refused', fetchedAt: NOW },
+    { def: { id: 'b', label: 'B', kind: 'news' }, status: 'live', records: [{ url: 'https://example.com/x' }], fetchedAt: NOW },
+    { def: { id: 'c', label: 'C', kind: 'news' }, status: 'live', records: [], fetchedAt: NOW },
+  ];
+  const rows = buildSourceRows(attempts, {
+    itemCounts: new Map([['b', 0]]),
+    previousSources: new Map([['a', { lastSuccessAt: NOW - HOUR }]]),
+    retainedBySource: new Map([['a', 2]]),
+  });
+  assert.equal(rows[0].status, 'cached');
+  assert.equal(rows[0].recordCount, 0);
+  assert.equal(rows[0].lastSuccessAt, NOW - HOUR);
+  assert.equal(rows[1].status, 'live');
+  assert.match(rows[1].note, /duplicates/);
+  assert.equal(rows[2].status, 'empty');
+});
+
+test('a thin build is described as thin, a normal one says nothing', () => {
+  assert.equal(coverageNoteText({ sourcesAttempted: 28, sourcesLive: 26 }), null);
+  assert.match(coverageNoteText({ sourcesAttempted: 28, sourcesLive: 4 }), /4 of 28 sources answered/);
+  assert.equal(coverageNoteText(null), null);
+});
+
+test('a failed parse leaves a diagnostic excerpt on disk', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'motobuzz-diag-'));
+  try {
+    const written = await saveDiagnostics(
+      [
+        {
+          def: { id: 'yt-test' },
+          fetchedAt: NOW,
+          diagnostic: { stage: 'channel page', bytes: 11, excerpt: '<html>bad</html>' },
+        },
+        { def: { id: 'yt-ok' }, fetchedAt: NOW, diagnostic: null },
+      ],
+      { root },
+    );
+    assert.equal(written.length, 1);
+    const text = await readFile(written[0], 'utf8');
+    assert.match(text, /yt-test.*stage=channel page/);
+    assert.match(text, /<html>bad<\/html>/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('the Atom feed carries the records and escapes their titles', () => {
+  const snapshot = buildSnapshot([record({ title: 'Tomac & Jett <win>' })], { now: NOW });
+  const xml = buildAtomFeed({ generatedAt: NOW, site: { name: 'MotoBuzz' }, buzz: snapshot.buzz, items: snapshot.items });
+  assert.match(xml, /<feed xmlns="http:\/\/www.w3.org\/2005\/Atom">/);
+  assert.match(xml, /Tomac &amp; Jett &lt;win&gt;/);
+  assert.equal((xml.match(/<entry>/g) || []).length, 1);
 });
 
 /* ---------- scoring ---------- */
@@ -386,7 +514,6 @@ function record(overrides = {}) {
     fetchedAt: NOW,
     engagement: null,
     engagementLabel: null,
-    replies: null,
     topics: ['results'],
     entities: ['eli-tomac'],
     region: 'us',
@@ -402,8 +529,8 @@ test('recency decays by half over one half-life', () => {
 });
 
 test('social engagement raises energy but with a log scale', () => {
-  const quiet = engagementFactor({ kind: 'social', engagement: 1, replies: 0 });
-  const loud = engagementFactor({ kind: 'social', engagement: 500_000, replies: 0 });
+  const quiet = engagementFactor({ kind: 'social', engagement: 1 });
+  const loud = engagementFactor({ kind: 'social', engagement: 500_000 });
   assert.ok(loud > quiet);
   assert.ok(loud < 12, 'a viral post cannot dominate without bound');
   assert.equal(engagementFactor({ kind: 'news', engagement: 999_999 }), 1);

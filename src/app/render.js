@@ -2,7 +2,7 @@
  * All rendering. Pure functions from cache state to DOM, no framework.
  * Anything that came from a feed is escaped before it is inserted.
  */
-import { BUZZ, DECAY, ENTITY_BY_ID, FEED_PAGE_SIZE, TOPIC_LABELS, TOPICS, WINDOW } from '../config.js';
+import { BUZZ, COVERAGE, DECAY, ENTITY_BY_ID, FEED_PAGE_SIZE, TOPIC_LABELS, TOPICS, WINDOW } from '../config.js';
 import { clockTime, compactNumber, percent, pluralize, relativeTime } from './format.js';
 
 const ARC_LENGTH = 251.33;
@@ -520,6 +520,27 @@ function renderMethod(state) {
   </div>`;
 }
 
+/* ---------- coverage ---------- */
+
+/**
+ * A thin build and a quiet week are different things. When fewer sources
+ * answered than usual, say so next to the number instead of letting the reading
+ * look complete.
+ */
+export function coverageNoteText(build) {
+  const attempted = Number(build?.sourcesAttempted) || 0;
+  const live = Number(build?.sourcesLive) || 0;
+  if (!attempted || live / attempted >= COVERAGE.minLiveShare) return null;
+  return `Thin build: ${live} of ${attempted} sources answered, so this reading is drawn from less of the sport than usual.`;
+}
+
+function renderCoverage(state) {
+  const node = byId('coverage-note');
+  const text = coverageNoteText(state.cache?.build);
+  node.hidden = !text;
+  node.textContent = text || '';
+}
+
 /* ---------- entry point ---------- */
 
 export function render(state) {
@@ -528,6 +549,7 @@ export function render(state) {
   renderStatus(state);
   renderTicks();
   renderGauge(state);
+  renderCoverage(state);
   renderMeta(state);
   renderHistory(state);
   renderSinceLast(state);

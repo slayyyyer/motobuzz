@@ -12,6 +12,9 @@
     "dev": "node proxy/server.js",
     "cache": "node scripts/build-buzz-cache.js",
     "cache:local": "node scripts/build-buzz-cache.js --relay http://127.0.0.1:8080",
-    "test": "node tests/run.js"
+    "test": "node tests/run.js",
+    "calibrate": "node scripts/calibrate.js",
+    "watchlist:audit": "node scripts/watchlist-audit.js",
+    "feed": "node scripts/build-feed.js"
   }
 }

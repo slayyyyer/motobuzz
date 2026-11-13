@@ -83,7 +83,6 @@ export async function loadBridgeSource(def, ctx) {
       fetchedAt,
       engagement: null,
       engagementLabel: null,
-      replies: null,
       channel: def.label,
     });
   }

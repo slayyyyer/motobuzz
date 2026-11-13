@@ -45,12 +45,16 @@ energy = kind weight × engagement × 2^(−age in hours ÷ half-life in hours)
 ```
 
 - `kind weight` is 1 for news and 0.9 for social.
-- `engagement` is 1 for news, and for social it is `1 + log10(1 + score)/1.6 + log10(1 + replies)/3.2`, so a viral
-  post counts for more but cannot swallow the board.
+- `engagement` is 1 for news, and for social it is `1 + log10(1 + score)/1.6`, so a video with a large audience
+  counts for more but cannot swallow the board.
 - Recency is a half-life decay, not a step function.
 
-The meter is `100 × (1 − e^(−total energy ÷ 26))`: it climbs steeply with the first few stories and flattens out as the
-room gets loud.
+The meter is `100 × (1 − e^(−total energy ÷ 18))`: it climbs steeply with the first few stories and flattens out as
+the room gets loud. The 18 was re-derived on 2026-11-13 from eleven stored builds with the Instagram and Reddit
+records filtered out: 24-hour energy ran 6.3–13.4 with a median of 12.1, which this constant maps to 29–52. Without
+that change the top three bands would have been unreachable at the source mix the site now reads. `npm run
+calibrate` reprints the distribution and the value that would put the median at 50; the sample is off-season and
+should be re-checked after a race weekend.
 
 | Score | Label | Reading |
 | --- | --- | --- |
@@ -93,12 +97,23 @@ Everything lives in [`src/config.js`](src/config.js). There is no language model
 | SuperMotocross | news | `supermotocross.com/feed/` | Official SMX World Championship feed |
 | PulpMX | news | `pulpmx.com/feed` | The show and the shop talk that break signings and injuries first |
 | MotoOnline | news | `motoonline.com.au/feed/` | Australian MX coverage, still publishing daily through the off-season |
+| MXGP | news | `mxgp.com/rss.xml` | Official FIM Motocross World Championship feed, so the world series has a first-party source too |
+| MX Vice | news | `mxvice.com/feed/` | Publishes daily, including race weekends, and was one of the outlets the index used to supply |
+| Vurbmoto | news | `vurbmoto.com/feed/` | Same reasoning: a daily outlet read directly instead of through the index |
 | Google News × 12 | news | `news.google.com/rss/search?q=…&when:3d` | Reaches Racer X, Vital MX, Dirt Bike, and the rest, which block datacenter traffic or have no feed of their own; seven of the queries name riders from the watchlist, so a headline that never says "motocross" still counts |
-| 9 YouTube channels | social | `youtube.com/@handle/videos` | Series, magazines, and shows that publish every week |
+| 9 YouTube channels | social | `youtube.com/feeds/videos.xml?channel_id=…` | The documented channel feed, with the channel page as a fallback; series, magazines, and shows that publish every week |
 
 Google News items carry the real outlet in their `<source>` element, so the publisher shown is the outlet, not the
 index. The direct feeds for Racer X, Dirt Bike, and Motocross Action were tested and refused the request; the query
 route is the honest way to include them.
+
+**A thin build says so.** When fewer than `COVERAGE.minLiveShare` (70%) of configured sources answer, the page
+prints a coverage note beside the score: "Thin build: N of M sources answered…". The number itself is not rescaled,
+because a quiet week and a failed fetch are different claims and only one of them is about the sport.
+
+**One outlet cannot fill the index.** Google News records are capped at `NEWS_PUBLISHER_CAP` (6) per publisher per
+build, counted across queries, so syndication cannot dominate the board. Eleven stored builds show at most four
+records from one publisher, so the cap is a guard rather than a trim.
 
 **X is not scraped.** It still refuses anonymous reads. If you run your own RSS bridge (RSSHub, for example), set
 `MOTOBUZZ_BRIDGE_URL` for the build and the handles in `BRIDGE_HANDLES` are read through it, labelled as bridged.
@@ -136,6 +151,9 @@ node scripts/build-buzz-cache.js --relay http://127.0.0.1:8080
 node scripts/build-buzz-cache.js --out ./data/buzz-cache.json --previous ./data/buzz-cache.json
 MOTOBUZZ_BRIDGE_URL=https://your-bridge.example node scripts/build-buzz-cache.js
 MOTOBUZZ_RELAY=http://127.0.0.1:8080 node scripts/build-buzz-cache.js
+npm run calibrate                                  # score distribution of stored caches
+npm run watchlist:audit                            # quiet riders and unwatched names
+node scripts/build-feed.js data/buzz-cache.json dist/feed.xml
 PORT=8099 HOST=0.0.0.0 npm start
 ```
 
@@ -188,6 +206,12 @@ each source's state shown on the page.
 anything. An invalid envelope is rejected whole so a broken snapshot cannot replace a good one; individual bad records
 are dropped and counted.
 
+## The published feed
+
+`dist/feed.xml` is an Atom feed of the same records, written by `scripts/build-feed.js` from the cache after the
+build. It carries the newest 30 records with their link, publisher, and publish time, plus the current headline, and
+`index.html` links to it as the alternate feed. Nothing in it is generated separately from the cache.
+
 ## Adding a source or a name
 
 - **A rider, brand, team, or series**: add an entry with a `name` and `aliases` to `RIDERS`, `BRANDS`, `TEAMS`, or
@@ -197,7 +221,8 @@ are dropped and counted.
   of terms per query and a quiet rider in a group of quiet riders returns nothing.
 - **A news feed**: add it to `FEEDS` in `src/config.js` and to `ALLOWED_UPSTREAMS` in `proxy/allowlist.js` if the relay
   should reach it too.
-- **A YouTube channel**: add to `YOUTUBE_CHANNELS` with the handle from the channel URL.
+- **A YouTube channel**: add to `YOUTUBE_CHANNELS` with the handle and the 24-character channel id (the feed URL on
+the channel page has it). The build reads `feeds/videos.xml?channel_id=…` first and the channel page second.
 - **A topic**: add to `TOPICS` with its keywords.
 
 ## Privacy and limitations
@@ -207,8 +232,10 @@ are dropped and counted.
 - The browser downloads one same-origin JSON cache. Headlines never leave your machine.
 - The cache contains only public records: titles, links, publisher names, timestamps, and the audience numbers those
   sources already publish.
-- YouTube channel markup is scraped, not an API. When it changes, those sources report `malformed` and every other
-  source keeps working.
+- YouTube is read from each channel's public Atom feed first, with the channel page as a fallback. When neither
+  parses, the source reports `malformed` and keeps a small excerpt under `data/diagnostics/` (gitignored, never
+  published) so the next person can see what changed; every other source keeps working.
+- A build in which fewer than 70% of sources answered is labelled thin on the page. The score is not adjusted for it.
 - Google News links point at a Google redirect; the publisher and its homepage are stored alongside.
 - Greenhouse cases: a quiet weekend really does read as a low score, and the page says so instead of manufacturing
   drama.
@@ -221,11 +248,17 @@ styles.css                  all styling
 proxy/server.js             local static server + allowlisted relay
 proxy/allowlist.js          every upstream the relay may reach
 scripts/build-buzz-cache.js the hourly build
+scripts/build-feed.js       Atom feed written from the cache into dist/
+scripts/calibrate.js        score-distribution report for the meter
+scripts/watchlist-audit.js  quiet riders and unwatched names in a cache
 docs/paper.md               the paper: build system, adapters, classification, scoring
 src/config.js               feeds, watchlist, topics, decay, thresholds
 src/adapters/               news, youtube, bridge, feed parser, http
 src/engine/classify.js      topics, names, region
 src/engine/score.js         energy, decay, momentum, heat, headline
+src/engine/pipeline.js      continuity, dedupe, source status
+src/engine/feed.js          Atom feed generation
+src/engine/diagnostics.js   excerpt writing for failed parses
 src/engine/validate.js      cache validation used by both build and page
 src/lib/text.js             entity decoding, normalization, URL and count parsing
 src/app/                    cache loader, renderer, bootstrap, formatters
@@ -238,6 +271,7 @@ tests/run.js                the suite
 npm test
 ```
 
-54 tests using only Node's built-in assertions: text decoding, feed and Atom parsing, malformed-versus-empty
-diagnostics, the YouTube page extractor against a fixture, classification and alias safety, decay and momentum,
-saturation, bucket accounting, cache validation, and the relay allowlist.
+63 tests using only Node's built-in assertions: text decoding, feed and Atom parsing, malformed-versus-empty
+diagnostics, the YouTube channel-feed reader and page extractor against fixtures, classifier and alias safety,
+decay and momentum, saturation, bucket accounting, cache validation, the relay allowlist, continuity and dedupe,
+deprecated-source filtering, source status, the thin-build note, diagnostics, and the Atom feed.

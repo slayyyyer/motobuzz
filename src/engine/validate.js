@@ -49,8 +49,6 @@ export function validateRecord(raw, now) {
     fetchedAt: finiteNumber(raw.fetchedAt) ? raw.fetchedAt : null,
     engagement: finiteNumber(raw.engagement) ? raw.engagement : null,
     engagementLabel: typeof raw.engagementLabel === 'string' && raw.engagementLabel.length <= 20 ? raw.engagementLabel : null,
-    replies: finiteNumber(raw.replies) ? raw.replies : null,
-    dateBasis: raw.dateBasis === 'day' ? 'day' : 'exact',
     topics: stringList(raw.topics),
     entities: stringList(raw.entities),
     region: ['us', 'world', 'mixed'].includes(raw.region) ? raw.region : null,

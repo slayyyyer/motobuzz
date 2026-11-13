@@ -36,9 +36,19 @@ export const KIND_META = Object.freeze({
   social: { label: 'Social', weight: 0.9 },
 });
 
-/** Buzz score = 100 × (1 − e^(−energy / saturationEnergy)). */
+/**
+ * Buzz score = 100 × (1 − e^(−energy / saturationEnergy)).
+ *
+ * The saturation point was re-derived on 2026-11-13, after Instagram and Reddit
+ * were removed, from eleven stored builds with those records filtered out: total
+ * 24-hour energy ran 6.3–13.4 with a median of 12.1. 18 maps that to 29–52 and
+ * puts the median at 49, so an ordinary off-season day reads Idling to Warming
+ * up and the hot bands remain available for a race weekend. `npm run calibrate`
+ * reprints the distribution and the value that would put the median at 50. The
+ * sample contains no race weekend; re-check the constant after one.
+ */
 export const BUZZ = Object.freeze({
-  saturationEnergy: 26,
+  saturationEnergy: 18,
   bands: Object.freeze([
     { level: 'quiet', min: 0, label: 'Quiet', note: 'Almost nothing new is landing.' },
     { level: 'idle', min: 15, label: 'Idling', note: 'A slow stretch of the week.' },
@@ -233,7 +243,7 @@ export const SERIES = Object.freeze([
   { id: 'smx', name: 'SuperMotocross', aliases: ['SuperMotocross', 'SMX', 'SMX World Championship', 'SMX Playoffs'] },
   { id: 'mxgp', name: 'MXGP', aliases: ['MXGP', 'FIM Motocross World Championship'] },
   { id: 'mxon', name: 'Motocross of Nations', aliases: ['Motocross of Nations', 'MXoN', 'MXON'] },
-  { id: 'wsx', name: 'World Supercross', aliases: ['World Supercrosstitle', 'WSX'] },
+  { id: 'wsx', name: 'World Supercross', aliases: ['World Supercross', 'WSX'] },
   { id: 'loretta', name: "Loretta Lynn's", aliases: ["Loretta Lynn's", 'Lorettas', 'Loretta'] },
   { id: 'world-vet', name: 'World Vet Championship', aliases: ['World Vet'] },
 ]);
@@ -279,7 +289,36 @@ export const FEEDS = Object.freeze([
     homepage: 'https://www.motoonline.com.au/',
     url: 'https://www.motoonline.com.au/feed/',
   },
+  {
+    id: 'mxgp',
+    label: 'MXGP',
+    provider: 'MXGP World Championship',
+    homepage: 'https://www.mxgp.com/',
+    url: 'https://www.mxgp.com/rss.xml',
+  },
+  {
+    id: 'mxvice',
+    label: 'MX Vice',
+    provider: 'MX Vice',
+    homepage: 'https://mxvice.com/',
+    url: 'https://mxvice.com/feed/',
+  },
+  {
+    id: 'vurbmoto',
+    label: 'Vurbmoto',
+    provider: 'Vurbmoto',
+    homepage: 'https://vurbmoto.com/',
+    url: 'https://vurbmoto.com/feed/',
+  },
 ]);
+
+/**
+ * No single outlet should be able to fill the Google News portion of the board
+ * through syndication. Six per publisher per build is a guard, not a trim: the
+ * eleven stored builds show at most four records from one publisher in a build,
+ * across 51 distinct publishers.
+ */
+export const NEWS_PUBLISHER_CAP = 6;
 
 /**
  * A rider-name query answers only a bounded number of terms, so the watchlist is
@@ -335,22 +374,26 @@ export const NEWS_TITLE_DENYLIST = Object.freeze([
   /\blive score(card)?\b/i,
 ]);
 
+// The channel id is what YouTube's public Atom feed needs; it was resolved from
+// each handle on 2026-11-13 and is stable. The feed is read first because it is
+// documented, dated, and carries view counts; the channel page is the fallback.
 export const YOUTUBE_CHANNELS = Object.freeze([
-  { id: 'yt-supercrosslive', handle: 'SupercrossLIVE', label: 'Monster Energy Supercross' },
-  { id: 'yt-supermotocross', handle: 'SuperMotocross', label: 'SuperMotocross' },
-  { id: 'yt-vitalmx', handle: 'vitalmx', label: 'Vital MX' },
-  { id: 'yt-motocrossaction', handle: 'motocrossaction', label: 'Motocross Action' },
-  { id: 'yt-dirtbikemag', handle: 'DirtBikeMagazine', label: 'Dirt Bike Magazine' },
+  { id: 'yt-supercrosslive', handle: 'SupercrossLIVE', channelId: 'UCcAjWBbd4aO4AhoovRKNbag', label: 'Monster Energy Supercross' },
+  { id: 'yt-supermotocross', handle: 'SuperMotocross', channelId: 'UCkaNo2FUEWips2z4BkOHl6Q', label: 'SuperMotocross' },
+  { id: 'yt-vitalmx', handle: 'vitalmx', channelId: 'UCcX5xwMOCt92bi0dmspMFQw', label: 'Vital MX' },
+  { id: 'yt-motocrossaction', handle: 'motocrossaction', channelId: 'UCdsTZGGXC9xtLjGeuLJTBlg', label: 'Motocross Action' },
+  { id: 'yt-dirtbikemag', handle: 'DirtBikeMagazine', channelId: 'UCeKccRs9icuvfnQ2Z6Yf6gQ', label: 'Dirt Bike Magazine' },
   // The OEM channels post a handful of times a season, so they were replaced
-  // by outlets that publish every week. Handles answer 200 when checked; a
-  // wrong one is a 404, so a typo cannot linger as a permanently empty source.
-  { id: 'yt-pulpmx', handle: 'pulpmx', label: 'PulpMX' },
-  { id: 'yt-gypsytales', handle: 'gypsytales', label: 'Gypsy Tales' },
-  { id: 'yt-racerx', handle: 'RacerXIllustrated', label: 'Racer X' },
-  { id: 'yt-whiskeythrottle', handle: 'whiskeythrottle', label: 'Whiskey Throttle' },
+  // by outlets that publish every week. A wrong handle is a 404, and a wrong
+  // channel id makes the feed answer 404, so a typo cannot linger unnoticed.
+  { id: 'yt-pulpmx', handle: 'pulpmx', channelId: 'UCpMfM2f4b6ehg1H_olAx02Q', label: 'PulpMX' },
+  { id: 'yt-gypsytales', handle: 'gypsytales', channelId: 'UCsBGR5UR7UCyLvNbHSxisFQ', label: 'Gypsy Tales' },
+  { id: 'yt-racerx', handle: 'RacerXIllustrated', channelId: 'UCzLDrufzDTIQX_F20r0EiMA', label: 'Racer X' },
+  { id: 'yt-whiskeythrottle', handle: 'whiskeythrottle', channelId: 'UCeYlMNQb9nichyHaBZEWtFg', label: 'Whiskey Throttle' },
 ]);
 
 export const YOUTUBE_BASE = 'https://www.youtube.com';
+export const YOUTUBE_FEED_BASE = 'https://www.youtube.com/feeds/videos.xml';
 
 /**
  * Optional operator-run RSS bridge (a self-hosted RSSHub, for example) for X,
@@ -382,7 +425,15 @@ export const INGEST = Object.freeze({
   maxTitleLength: 240,
   maxSummaryLength: 320,
   bridgeTimeoutMs: 20_000,
+  /** Bytes kept from a page that failed to parse, for after-the-fact diagnosis. */
+  diagnosticBytes: 4096,
 });
+
+/** Gitignored, build-local: one excerpt per source that failed to parse. */
+export const DIAGNOSTICS_PATH = 'data/diagnostics';
+
+/** Below this share of configured sources answering, the page says so. */
+export const COVERAGE = Object.freeze({ minLiveShare: 0.7 });
 
 /** The static snapshot built by the hourly GitHub Actions workflow. */
 export const CACHE_URL = new URL('../data/buzz-cache.json', import.meta.url).href;

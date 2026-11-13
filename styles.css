@@ -408,6 +408,14 @@ main {
   letter-spacing: 0.06em;
 }
 
+.coverage-note {
+  border-left: 2px solid var(--hot);
+  padding-left: 10px;
+  color: var(--dim);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 .meta-strip {
   display: flex;
   flex-wrap: wrap;

@@ -12,8 +12,10 @@ export const ALLOWED_UPSTREAMS = Object.freeze([
   { origin: 'https://www.pulpmx.com', pathPrefixes: ['/feed'], label: 'PulpMX RSS' },
   { origin: 'https://www.motoonline.com.au', pathPrefixes: ['/feed/'], label: 'MotoOnline RSS' },
   { origin: 'https://www.mxgp.com', pathPrefixes: ['/rss.xml'], label: 'MXGP RSS' },
+  { origin: 'https://mxvice.com', pathPrefixes: ['/feed'], label: 'MX Vice RSS' },
+  { origin: 'https://vurbmoto.com', pathPrefixes: ['/feed'], label: 'Vurbmoto RSS' },
   { origin: 'https://news.google.com', pathPrefixes: ['/rss/search'], label: 'Google News index' },
-  { origin: 'https://www.youtube.com', pathPrefixes: ['/@'], label: 'Public YouTube channel pages' },
+  { origin: 'https://www.youtube.com', pathPrefixes: ['/@', '/feeds/'], label: 'Public YouTube channel pages and feeds' },
 ]);
 
 const IP_LITERAL = /^(\d{1,3}\.){3}\d{1,3}$|^\[?[0-9a-f:]+\]?$/i;

@@ -76,8 +76,7 @@ export function recencyFactor(item, now) {
 export function engagementFactor(item) {
   if (item.kind !== 'social') return 1;
   const score = Math.max(0, Number(item.engagement) || 0);
-  const replies = Math.max(0, Number(item.replies) || 0);
-  return 1 + Math.log10(1 + score) / 1.6 + Math.log10(1 + replies) / 3.2;
+  return 1 + Math.log10(1 + score) / 1.6;
 }
 
 export function itemEnergy(item, now) {

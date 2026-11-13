@@ -121,7 +121,6 @@ export async function loadNewsSource(def, ctx) {
       fetchedAt,
       engagement: null,
       engagementLabel: null,
-      replies: null,
       channel: null,
     });
   }

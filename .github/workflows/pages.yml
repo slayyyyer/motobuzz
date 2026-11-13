@@ -63,6 +63,7 @@ jobs:
           cp index.html styles.css dist/
           cp -R src dist/src
           cp data/buzz-cache.json dist/data/
+          node scripts/build-feed.js data/buzz-cache.json dist/feed.xml
           touch dist/.nojekyll
 
       - name: Stop the relay
