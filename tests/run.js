@@ -590,6 +590,17 @@ test('classifies an injury story', () => {
   assert.ok(labels.entities.includes('haiden-deegan'));
 });
 
+test('finds Jalek Swoll in a real headline but not the word swollen', () => {
+  const labels = classify({
+    title: 'Official: Jalek Swoll Joins Phoenix Racing Honda for 2027 SuperMotocross',
+    summary: null,
+  });
+  assert.ok(labels.entities.includes('jalek-swoll'));
+
+  const bare = classify({ title: 'Rider has a swollen ankle after the main event', summary: null });
+  assert.ok(!bare.entities.includes('jalek-swoll'));
+});
+
 test('does not match a keyword inside a larger word', () => {
   const labels = classify({ title: 'Designer graphics kit released for the 2027 model', summary: null });
   assert.ok(!labels.topics.includes('signings'));

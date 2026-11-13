@@ -159,6 +159,7 @@ export const RIDERS = Object.freeze([
   { id: 'malcolm-stewart', name: 'Malcolm Stewart', aliases: ['Malcolm Stewart', 'Mookie'] },
   { id: 'haiden-deegan', name: 'Haiden Deegan', aliases: ['Haiden Deegan', 'Deegan'] },
   { id: 'rj-hampshire', name: 'RJ Hampshire', aliases: ['RJ Hampshire', 'Hampshire'] },
+  { id: 'jalek-swoll', name: 'Jalek Swoll', aliases: ['Jalek Swoll', 'Swoll'] },
   { id: 'jo-shimoda', name: 'Jo Shimoda', aliases: ['Jo Shimoda', 'Shimoda'] },
   { id: 'levi-kitchen', name: 'Levi Kitchen', aliases: ['Levi Kitchen'] },
   { id: 'chance-hymas', name: 'Chance Hymas', aliases: ['Chance Hymas', 'Hymas'] },
