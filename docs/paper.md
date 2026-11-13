@@ -197,12 +197,12 @@ refused.
 
 ## 5. Ingestion
 
-Thirty-eight configured sources, in five families.
+Forty-four configured sources, in five families.
 
 | Family | Count | Adapter | Limit | Refusal behaviour |
 | --- | --- | --- | --- | --- |
 | Direct RSS feeds | 4 | `news.js` | 30 items | `unavailable` / `malformed` |
-| Google News queries | 6 | `news.js` | 30 items | same |
+| Google News queries | 12 | `news.js` | 30 items | same |
 | Subreddit Atom | 3 | `reddit.js` | 25 posts | capture, then `unavailable` |
 | YouTube channels | 9 | `youtube.js` | 12 videos | `malformed` on markup change |
 | Instagram profiles | 14 | `instagram.js` | 4 posts | capture, then coarse route |
@@ -211,9 +211,21 @@ Thirty-eight configured sources, in five families.
 The Google News queries are not a convenience. Racer X, Vital MX, Dirt Bike, and Motocross Action
 either refuse datacenter traffic outright or publish no feed, so a query against the index is the
 honest way to include them; each item carries its real outlet in a `<source>` element, and that
-outlet — not the index — is what the page shows as the publisher. Two of the six queries name
+outlet — not the index — is what the page shows as the publisher. Seven of the twelve queries name
 riders explicitly, because once the race reports are written, a headline often says a name and
-never says "motocross".
+never says "motocross". Those seven are generated from `RIDERS` rather than hand-picked: Google
+News honours only a bounded number of terms in one query, so a single OR list of every rider
+silently stops covering its tail, and a shortlist silently leaves riders out. Adding a rider to the
+watchlist is therefore enough for the news pass to search for them.
+
+The names are dealt round-robin rather than sliced in watchlist order. The watchlist runs from the
+best-covered riders to the quietest, and a straight slice puts the quiet tail into groups that
+return nothing build after build — a group with no stories looks exactly like a rider with no news.
+Dealing one name per group at a time keeps every query mixed, so each one has something to find.
+
+The queries run one at a time with a pause between them (and one spaced retry when a query
+answers with nothing), because the index answers a burst of searches with an empty feed rather
+than an error — a group blanked that way would look like a quiet rider rather than a failed read.
 
 Each adapter normalizes on the way in and refuses to invent on the way out:
 
@@ -292,7 +304,7 @@ business, rules and safety, culture and media), each a list of keywords. A keywo
 title scores 2, a hit anywhere in the text scores 1. The top three topics are kept, in score
 order. Single-word keywords match whole tokens only, so `sign` does not fire inside `design`.
 
-**Entities.** A watchlist of 49 riders, 12 brands, 9 teams, and 8 series, each with a name and an
+**Entities.** A watchlist of 50 riders, 12 brands, 9 teams, and 8 series, each with a name and an
 alias list. Aliases are compiled to word-boundary regular expressions (`PHRASE_GAP` allows
 punctuation or whitespace between words), so "Jett Lawrence" matches across "Jett — Lawrence" and
 not inside a longer word.

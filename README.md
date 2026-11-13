@@ -97,7 +97,7 @@ Everything lives in [`src/config.js`](src/config.js). There is no language model
 | SuperMotocross | news | `supermotocross.com/feed/` | Official SMX World Championship feed |
 | PulpMX | news | `pulpmx.com/feed` | The show and the shop talk that break signings and injuries first |
 | MotoOnline | news | `motoonline.com.au/feed/` | Australian MX coverage, still publishing daily through the off-season |
-| Google News × 6 | news | `news.google.com/rss/search?q=…&when:3d` | Reaches Racer X, Vital MX, Dirt Bike, and the rest, which block datacenter traffic or have no feed of their own; two of the queries name riders, so a headline that never says "motocross" still counts |
+| Google News × 12 | news | `news.google.com/rss/search?q=…&when:3d` | Reaches Racer X, Vital MX, Dirt Bike, and the rest, which block datacenter traffic or have no feed of their own; seven of the queries name riders from the watchlist, so a headline that never says "motocross" still counts |
 | r/Motocross, r/supercross, r/MXGP | social | `reddit.com/r/<sub>/.rss` | Where the paddock argues |
 | 9 YouTube channels | social | `youtube.com/@handle/videos` | Series, magazines, and shows that publish every week |
 | 14 Instagram profiles | social | `instagram.com/<handle>/` | Riders, teams, brands, and series accounts, read from the page a crawler is served |
@@ -246,7 +246,10 @@ are dropped and counted.
 ## Adding a source or a name
 
 - **A rider, brand, team, or series**: add an entry with a `name` and `aliases` to `RIDERS`, `BRANDS`, `TEAMS`, or
-  `SERIES` in `src/config.js`. Aliases are matched on word boundaries against a normalized copy of the title.
+  `SERIES` in `src/config.js`. Aliases are matched on word boundaries against a normalized copy of the title. A new
+  rider is also searched for by name automatically: `NEWS_QUERIES` derives its rider-name queries from `RIDERS`,
+  dealt round-robin into groups of up to `RIDER_QUERY_GROUP_SIZE`, because Google News honours only a bounded number
+  of terms per query and a quiet rider in a group of quiet riders returns nothing.
 - **A news feed**: add it to `FEEDS` in `src/config.js` and to `ALLOWED_UPSTREAMS` in `proxy/allowlist.js` if the relay
   should reach it too.
 - **A subreddit**: add to `SUBREDDITS`.

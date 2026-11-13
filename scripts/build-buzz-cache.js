@@ -19,7 +19,16 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 
-import { CACHE_SCHEMA_VERSION, FETCH, INGEST, INSTAGRAM_CAPTURE, REDDIT_CAPTURE, SITE, WINDOW } from '../src/config.js';
+import {
+  CACHE_SCHEMA_VERSION,
+  ENTITY_BY_ID,
+  FETCH,
+  INGEST,
+  INSTAGRAM_CAPTURE,
+  REDDIT_CAPTURE,
+  SITE,
+  WINDOW,
+} from '../src/config.js';
 import { sleep } from '../src/adapters/http.js';
 import { isJunkTitle, loadNewsSource, newsSourceDefs } from '../src/adapters/news.js';
 import { loadRedditSource, redditSourceDefs } from '../src/adapters/reddit.js';
@@ -33,6 +42,21 @@ import { buildSnapshot, isEligible, stableId, urlKey } from '../src/engine/score
 import { validateCache } from '../src/engine/validate.js';
 import { enrichLabels } from '../src/engine/enrich.js';
 import { titleKey } from '../src/lib/text.js';
+
+const CONTEXT_KINDS = new Set(['brand', 'team', 'series']);
+
+/**
+ * True when a record reads as a story about a watched rider. A name on its own is
+ * not enough: "Pierce Brown 2026 Stats per Game" names a college football player,
+ * and an obituary can carry a rider's name too.
+ */
+function isRiderStory(record) {
+  const ids = record.entities || [];
+  if (!ids.some((id) => ENTITY_BY_ID[id]?.kind === 'rider')) return false;
+  if ((record.topics || []).length > 0) return true;
+  if (record.region) return true;
+  return ids.some((id) => CONTEXT_KINDS.has(ENTITY_BY_ID[id]?.kind));
+}
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
@@ -200,11 +224,32 @@ async function main() {
     log(`  local ${label} capture: ${count} source(s)${age}`);
   }
 
-  // News and YouTube are independent, so they run together; Reddit is spaced out.
+  // Google News throttles a burst of queries and answers an empty feed instead of
+  // an error, which would blank a group silently. Its queries therefore run one at
+  // a time with a pause, like the Reddit fetches. Direct feeds and YouTube hit
+  // different hosts and stay concurrent.
+  const feedDefs = newsDefs.filter((def) => def.type !== 'google');
+  const googleDefs = newsDefs.filter((def) => def.type === 'google');
+
   const concurrent = await Promise.all([
-    ...newsDefs.map((def) => runSource(def, loadNewsSource)),
+    ...feedDefs.map((def) => runSource(def, loadNewsSource)),
     ...youtubeDefs.map((def) => runSource(def, loadYoutubeSource)),
   ]);
+
+  const googleResults = [];
+  for (const [index, def] of googleDefs.entries()) {
+    if (index > 0) await sleep(FETCH.googleNewsSpacingMs);
+    let result = await runSource(def, loadNewsSource);
+    // A throttled query can come back as an empty feed rather than an error, so a
+    // group that found nothing gets one more try after a longer pause instead of
+    // staying blank for the whole hour.
+    if (result.records.length === 0) {
+      await sleep(FETCH.googleNewsRetryMs);
+      const retried = await runSource(def, loadNewsSource);
+      if (retried.records.length > 0 || retried.status === 'unavailable') result = retried;
+    }
+    googleResults.push(result);
+  }
 
   const redditResults = [];
   for (const [index, def] of redditDefs.entries()) {
@@ -234,7 +279,13 @@ async function main() {
     bridgeResults.push(await runSource(def, loadBridgeSource));
   }
 
-  const attempts = [...concurrent, ...redditResults, ...instagramResults, ...bridgeResults];
+  const attempts = [
+    ...concurrent,
+    ...googleResults,
+    ...redditResults,
+    ...instagramResults,
+    ...bridgeResults,
+  ];
 
   // --- continuity -----------------------------------------------------------
   const previousSources = new Map(
@@ -255,8 +306,21 @@ async function main() {
 
   // --- collect --------------------------------------------------------------
   const ordered = [];
+  let offTarget = 0;
   for (const attempt of attempts) {
-    for (const record of attempt.records) ordered.push(normalizeRecord(record));
+    const riderQuery = attempt.def.id.startsWith('gnews-riders-');
+    for (const record of attempt.records) {
+      const normalized = normalizeRecord(record);
+      // A rider-name query is loose at Google's end: it can answer with a story
+      // that names nobody on the watchlist, or one that carries a rider's name in
+      // another sport. Neither is rider coverage, so it is dropped rather than
+      // shown as if a rider had been found.
+      if (riderQuery && !isRiderStory(normalized)) {
+        offTarget += 1;
+        continue;
+      }
+      ordered.push(normalized);
+    }
   }
   // Retained records come last so a freshly fetched copy always wins the dedupe.
   for (const item of retained) ordered.push(normalizeRecord(item));
@@ -306,15 +370,22 @@ async function main() {
     const carried = failed && (retainedBySource.get(attempt.def.id) || 0) > 0;
     // A source that answered but had nothing inside the retention window is empty, not live.
     const emptied = attempt.status === 'live' && count === 0;
+    // A query whose records were all already counted from an earlier source still
+    // answered: calling it empty would hide a group that did its job.
+    const deduped = emptied && attempt.records.length > 0;
     return {
       sourceId: attempt.def.id,
       label: attempt.def.label,
       provider: attempt.def.provider,
       homepage: attempt.def.homepage,
       kind: attempt.def.kind,
-      status: carried ? 'cached' : emptied ? 'empty' : attempt.status,
+      status: carried ? 'cached' : emptied && !deduped ? 'empty' : attempt.status,
       error: attempt.error,
-      note: emptied ? 'Answered, but nothing landed inside the retention window.' : attempt.note,
+      note: deduped
+        ? 'Answered; its records were duplicates or outside the window.'
+        : emptied
+          ? 'Answered, but nothing landed inside the retention window.'
+          : attempt.note,
       fetchedAt: attempt.fetchedAt,
       lastSuccessAt: attempt.status === 'live' ? attempt.fetchedAt : prior?.lastSuccessAt ?? null,
       recordCount: count,
@@ -356,6 +427,7 @@ async function main() {
         error: enrichment.error,
       },
       duplicatesDropped: duplicates,
+      riderQueryOffTarget: offTarget,
       recordsPruned: pruned,
       recordsRetained: retained.length,
       recordsKept: items.length,
@@ -397,6 +469,11 @@ async function main() {
   log(`  buzz ${snapshot.buzz.score}/100 (${snapshot.buzz.label}) · ${snapshot.buzz.activeItems} active records · momentum x${snapshot.buzz.momentum}`);
   log(`  ${snapshot.buzz.headline}`);
   log(`  ${items.length} records written, ${duplicates} duplicates dropped, ${retained.length} carried from the previous cache`);
+  if (offTarget > 0) {
+    log(
+      `  ${offTarget} rider-query record${offTarget === 1 ? '' : 's'} named no watched rider or no motocross context, dropped`,
+    );
+  }
   log(`  wrote ${outPath}`);
   if (enrichment.configured && enrichment.requested > 0) {
     const detail = enrichment.error ? ` (${enrichment.error})` : '';

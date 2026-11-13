@@ -474,6 +474,14 @@ export const FETCH = Object.freeze({
   maxBytes: 4 * 1024 * 1024,
   /** Reddit throttles datacenter traffic, so its requests are spaced out. */
   redditSpacingMs: 2_500,
+  /**
+   * Google News answers a burst of index queries with throttling, and a throttled
+   * query comes back as an empty feed rather than an error. The twelve queries
+   * therefore run one at a time with this pause between them.
+   */
+  googleNewsSpacingMs: 1_500,
+  /** Pause before the one retry a Google query gets when it answered with nothing. */
+  googleNewsRetryMs: 4_000,
 });
 
 export const INGEST = Object.freeze({
