@@ -21,8 +21,8 @@ The browser makes exactly one request and renders what it received.
 
 This paper describes the whole path, in the order the build walks it: the schedule, the sources
 and their adapters, the record model, continuity across builds, deduplication, classification,
-the scoring mathematics, the failure taxonomy, the committed local capture used where a runner
-is refused, the client, and the limits of what any of it can support.
+the scoring mathematics, the failure taxonomy, the client, and the limits of what any of it can
+support.
 
 ---
 
@@ -65,20 +65,18 @@ Everything that follows is a consequence of those four.
    ──────────────      │   │  scripts/build-buzz-cache.js  │       │
    RSS feeds ──────────┼──▶│                               │       │
    Google News ────────┼──▶│  adapters → classify → score  │       │
-   Reddit Atom ────────┼──▶│        → validate → write     │       │
-   YouTube pages ──────┼──▶│                               │       │
-   Instagram pages ────┼──▶└──────────────┬────────────────┘       │
+   YouTube pages ──────┼──▶└──────────────┬────────────────┘       │
                        │                  │                        │
    ┌───────────────┐   │                  ▼                        │
    │ relay :8080   │◀──┼── news fetches   data/buzz-cache.json     │
    │ allowlisted   │   │                  │                        │
    └───────────────┘   │                  ▼                        │
                        │        dist/  = index.html + styles.css   │
-   ┌───────────────┐   │                 + src/ + data/*.json      │
-   │ snapshots/    │──▶│                  │                        │
-   │ committed by  │   │                  ▼                        │
-   │ a home capture│   │        upload-pages-artifact → deploy     │
-   └───────────────┘   └──────────────────┬────────────────────────┘
+                       │                 + src/ + data/*.json      │
+                       │                  │                        │
+                       │                  ▼                        │
+                       │        upload-pages-artifact → deploy     │
+                       └──────────────────┬────────────────────────┘
                                           │
                                           ▼
                                   ┌───────────────┐
@@ -103,10 +101,6 @@ and the path prefixes it may reach, so a compromised or misconfigured adapter ca
 build into an open proxy. News feeds are fetched through it; when no relay is configured the
 build fetches directly, which is what a laptop run does.
 
-The **committed capture** (`snapshots/*.json`) is source, not output. It is written by a person
-running `npm run capture` on an ordinary home connection, committed, and read out of the
-checkout by the runner. Section 11 is about it.
-
 ---
 
 ## 3. The hourly build
@@ -123,16 +117,13 @@ minute on Actions' scheduler.
        poll /healthz up to 30×1 s
  0:35  node scripts/build-buzz-cache.js
          ├─ read previous cache (disk, else PREVIOUS_CACHE_URL)
-         ├─ read snapshots/instagram.json, snapshots/reddit.json
          ├─ news + YouTube          (all at once, Promise.all)
-         ├─ Reddit                  (one at a time, 2.5 s apart)
-         ├─ Instagram               (one at a time, 0.7 s apart)
          ├─ bridge                  (unconfigured unless MOTOBUZZ_BRIDGE_URL)
          ├─ continuity + dedupe + cap
          ├─ optional LLM labelling  (only unlabelled records)
          ├─ score                   (energy, decay, momentum, tables)
          ├─ validate its own output (rejects the whole cache if malformed)
-         └─ write data/buzz-cache.json + data/social/*.json
+         └─ write data/buzz-cache.json
  1:40  mkdir dist/ ; copy index.html, styles.css, src/, data/buzz-cache.json,
        touch .nojekyll
  1:45  kill the relay (always, even on failure)
@@ -140,11 +131,12 @@ minute on Actions' scheduler.
  1:55  deploy-pages → https://<user>.github.io/motobuzz/
 ```
 
-*Figure 2 — One build, wall-clock minutes approximate. Total runtime is dominated by Instagram.*
+*Figure 2 — One build, wall-clock minutes approximate. Total runtime is dominated by the Google
+News queries.*
 
-Concurrency is deliberate rather than uniform. News and YouTube sources are independent and run
-together. Reddit is serialized with a 2.5-second gap because its throttle is per-IP and a burst
-guarantees a 429. Instagram is serialized with 0.7 seconds between profiles for the same reason.
+Concurrency is deliberate rather than uniform. Direct feeds and YouTube sources are independent
+and run together. The Google News queries are serialized with a pause between them, because the
+index answers a burst of searches with an empty feed rather than an error.
 
 Three properties of this sequence are load-bearing:
 
@@ -173,14 +165,14 @@ from.
 | Field | Meaning |
 | --- | --- |
 | `id` | FNV-1a hash of `sourceId \| url`, stable across builds |
-| `sourceId` | The configured source, e.g. `gnews-motocross`, `ig-kenroczen` |
+| `sourceId` | The configured source, e.g. `gnews-motocross`, `yt-vitalmx` |
 | `kind` | `news` or `social` — selects the decay schedule and engagement model |
 | `title` | Truncated at 240 characters by the adapter |
 | `summary` | Truncated at 320 characters, or null |
 | `url` | Must be `https:`; anything else is dropped |
 | `publisher` | The outlet or channel shown to a reader |
 | `publisherUrl` | The publisher's homepage, for Google News redirects |
-| `channel` | `@handle`, `r/Subreddit`, or null |
+| `channel` | `@handle`, or null |
 | `publishedAt` | Epoch milliseconds, from the source |
 | `fetchedAt` | When this build read it |
 | `engagement`, `replies` | Social audience counts, or null |
@@ -197,15 +189,13 @@ refused.
 
 ## 5. Ingestion
 
-Forty-four configured sources, in five families.
+Twenty-seven configured sources, in four families.
 
 | Family | Count | Adapter | Limit | Refusal behaviour |
 | --- | --- | --- | --- | --- |
 | Direct RSS feeds | 4 | `news.js` | 30 items | `unavailable` / `malformed` |
 | Google News queries | 12 | `news.js` | 30 items | same |
-| Subreddit Atom | 3 | `reddit.js` | 25 posts | capture, then `unavailable` |
 | YouTube channels | 9 | `youtube.js` | 12 videos | `malformed` on markup change |
-| Instagram profiles | 14 | `instagram.js` | 4 posts | capture, then coarse route |
 | (X via operator bridge) | 2 | `bridge.js` | 12 posts | `unconfigured` by default |
 
 The Google News queries are not a convenience. Racer X, Vital MX, Dirt Bike, and Motocross Action
@@ -232,15 +222,8 @@ Each adapter normalizes on the way in and refuses to invent on the way out:
 - **RSS/Atom** (`feed.js`) parses both dialects, keeps `<pubDate>`/`<updated>`, and distinguishes
   *malformed* (bytes arrived, nothing parsed) from *empty* (parsed fine, no items). That
   distinction is what the page shows, because they mean different things to an operator.
-- **Reddit** reads the public Atom feed, drops entries with no date, drops `.rss` self-links, and
-  carries no engagement because the feed publishes none. A post therefore contributes volume and
-  recency but not audience size — stated on the page rather than papered over.
 - **YouTube** scrapes the channel page. It is best-effort by construction; when the markup
   changes those sources report `malformed` and everything else keeps working.
-- **Instagram** reads the page served to a crawler, which now arrives as `xig_user_by_username`
-  with a `polaris_ordered_timeline_connection` timeline whose posts carry a shortcode and no
-  timestamp. Each post's own page supplies the exact `taken_at` epoch plus like and comment
-  counts. A post whose own page has no readable timestamp is dropped rather than dated "now".
 
 A filter runs before any headline counts: `NEWS_TITLE_DENYLIST` removes search-index spam —
 "watch live", "live stream", bracketed CJK spam — that is technically a motocross headline and
@@ -471,57 +454,7 @@ parser needs attention, the second means the sport is quiet.
 
 ---
 
-## 11. The committed local capture
-
-Two sources answer an ordinary home connection and refuse a runner: Instagram replies to a
-datacenter IP with a login shell or a 429, and Reddit throttles datacenter traffic until two of
-its three subreddits come back 429. No amount of adapter work fixes an IP-based refusal.
-
-The response is a person, once, on a machine that is allowed to read:
-
-```
-  $ npm run capture            # both networks; or capture:instagram / capture:reddit
-  $ git add snapshots/ && git commit -m "…" && git push
-```
-
-`scripts/capture-local.mjs` drives the **same adapters the build uses** — same user agent, same
-parsers, same post-page timestamp route — so a captured record and a live record are
-indistinguishable except in where they came from.
-
-```
-   capture run                              build run
-   ───────────                              ─────────
-   read source on home IP                   try the live route
-        │                                        │
-        ├─ ok ─────▶ snapshots/*.json            ├─ ok ───────────▶ live
-        │           (merged, committed)          │
-        └─ fail ───▶ keep the previous entry     ├─ refused/threw ─▶ capture (if fresh) → cached
-                                                 └─ no capture ────▶ unavailable / malformed
-```
-
-*Figure 7 — The live route always goes first. The capture is a floor, not a replacement.*
-
-Rules that keep the fallback honest:
-
-1. **The live route is tried first, always.** A working runner read beats any snapshot.
-2. **A capture is trusted for 96 hours** (`INSTAGRAM_CAPTURE.maxAgeHours`,
-   `REDDIT_CAPTURE.maxAgeHours`) and ignored after that. Four days covers a weekend away without
-   letting the numbers describe a different week. Inside the window, the tooltip still says how
-   old the local read is — "read locally 2 h ago", "3 d ago" — and the source is `cached`, not
-   `live`.
-3. **The record still has to be recent.** Even a fresh capture contributes nothing older than the
-   social retention window (72 h), and nothing dated more than an hour in the future.
-4. **A failed capture keeps its previous entry.** Only a run in which every source failed leaves
-   the file untouched, and it exits non-zero so a scheduled job notices.
-5. **The file is validated like any other input.** Shape, key types, and timestamps are checked;
-   anything unreadable parses to null and the live routes run exactly as if no capture existed.
-
-The capture file is therefore audit-able: it holds the URL, title, publish time, like and comment
-counts, and the `capturedAt` of the read that produced it.
-
----
-
-## 12. The client
+## 11. The client
 
 ```
   page load
@@ -535,7 +468,7 @@ counts, and the `capturedAt` of the read that produced it.
      └─ auto-refresh every 10 min (cache older than 2 h is marked stale)
 ```
 
-*Figure 8 — The client's entire contract with the world.*
+*Figure 7 — The client's entire contract with the world.*
 
 The `?v=` query is a ten-minute bucket, so browsers and the Pages CDN can cache the file hard
 without anyone seeing an hour-old number. Validation on the client is the same module the build
@@ -547,32 +480,26 @@ looked" line. No cookies, no analytics, no third-party scripts, no fonts.
 
 ---
 
-## 13. What this measurement cannot say
+## 12. What this measurement cannot say
 
 - **It cannot tell you what matters.** Energy is volume and recency weighted by kind. A slow news
   week with one signing reads differently from a race weekend, and both readings are correct.
 - **It cannot rank sources by quality.** Every configured source counts the same per record.
 - **It cannot see what was not published.** Silent riders, private accounts, and unpublished
   injuries are invisible, and the page does not infer them.
-- **Its social engagement numbers are only what a page displayed** at read time. A captured
-  record's like count is as old as the capture.
-- **Reddit contributes no audience size**, because the public feed publishes none.
+- **Its social engagement numbers are only what YouTube displayed** at read time.
 - **Google News timestamps are the index's**, not always the outlet's. The publisher is shown;
   the timestamp is what arrived.
-- **Day-precision records are day-precision.** They are stamped midday UTC with
-  `dateBasis: "day"` and are never drawn as an exact hour.
 - **The LLM pass can mislabel**, and that is why it is limited to choosing from a closed list of
   ids, cannot touch dates or numbers, and does nothing when unconfigured or failing.
 
 ---
 
-## 14. Tests and reproducibility
+## 13. Tests and reproducibility
 
-`npm test` runs 64 tests on Node's built-in assertions, with no test framework and no
+`npm test` runs 54 tests on Node's built-in assertions, with no test framework and no
 dependencies: text decoding and normalization, RSS and Atom parsing, malformed-versus-empty
-diagnostics, the YouTube extractor against a fixture, the Instagram timeline and post-page
-parsers against fixtures of both container generations, capture parsing and expiry for both
-networks, classifier and alias safety (including the surnames that must *not* match), decay,
+diagnostics, the YouTube extractor against a fixture, classifier and alias safety (including the surnames that must *not* match), decay,
 momentum, saturation, bucket accounting, cache validation, and the relay allowlist.
 
 Everything in this paper can be reproduced without credentials:
@@ -582,7 +509,6 @@ npm test                                          # the suite
 npm start                                         # static server + relay on :8080
 npm run cache:local                               # build through the relay
 node scripts/build-buzz-cache.js --out /tmp/c.json # build directly, no relay
-npm run capture:reddit                            # write a local capture
 ```
 
 The build prints every source with its status and record count, then the score, the momentum, the
@@ -596,12 +522,10 @@ it ran.
 ```
 .github/workflows/pages.yml   schedule, test gate, relay, build, artifact, deploy
 scripts/build-buzz-cache.js   the pipeline in Figure 2
-scripts/capture-local.mjs     the capture run in Figure 7
 proxy/server.js               dev server + allowlisted relay
 proxy/allowlist.js            every upstream the relay may reach
 src/config.js                 sources, watchlist, topics, decay, thresholds
-src/adapters/                 news, reddit, youtube, instagram, bridge, feed parser, http
-src/adapters/local-capture.js shared capture plumbing (shape, freshness, age label)
+src/adapters/                 news, youtube, bridge, feed parser, http
 src/engine/classify.js        topics, entities, region (§8)
 src/engine/enrich.js          optional LLM labelling, closed id list (§8)
 src/engine/score.js           energy, decay, momentum, tables, headline (§9)

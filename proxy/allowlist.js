@@ -1,5 +1,3 @@
-import { INSTAGRAM_CRAWLER_UA, INSTAGRAM_FALLBACK } from '../src/config.js';
-
 /**
  * Every upstream the local relay will ever contact.
  *
@@ -15,21 +13,7 @@ export const ALLOWED_UPSTREAMS = Object.freeze([
   { origin: 'https://www.motoonline.com.au', pathPrefixes: ['/feed/'], label: 'MotoOnline RSS' },
   { origin: 'https://www.mxgp.com', pathPrefixes: ['/rss.xml'], label: 'MXGP RSS' },
   { origin: 'https://news.google.com', pathPrefixes: ['/rss/search'], label: 'Google News index' },
-  { origin: 'https://www.reddit.com', pathPrefixes: ['/r/'], label: 'Reddit public subreddit feeds' },
   { origin: 'https://www.youtube.com', pathPrefixes: ['/@'], label: 'Public YouTube channel pages' },
-  {
-    origin: 'https://www.instagram.com',
-    pathPrefixes: ['/'],
-    label: 'Instagram public profile and post pages',
-    userAgent: INSTAGRAM_CRAWLER_UA,
-  },
-  {
-    origin: 'https://html.duckduckgo.com',
-    pathPrefixes: ['/html/'],
-    label: 'DuckDuckGo result pages (post discovery only)',
-    userAgent: INSTAGRAM_FALLBACK.searchUserAgent,
-  },
-  { origin: 'https://api.microlink.io', pathPrefixes: ['/'], label: 'Microlink page metadata API' },
 ]);
 
 const IP_LITERAL = /^(\d{1,3}\.){3}\d{1,3}$|^\[?[0-9a-f:]+\]?$/i;

@@ -5,14 +5,14 @@
  * bridge (RSSHub and friends do this) and sets MOTOBUZZ_BRIDGE_URL for the build,
  * the X handles in config.js are read through it and labelled as bridged social
  * sources. Without a bridge those sources report `unconfigured` rather than
- * showing invented posts. Instagram has its own adapter and no longer needs this.
+ * showing invented posts.
  */
 import { BRIDGE_HANDLES, INGEST } from '../config.js';
 import { httpsUrl, truncate } from '../lib/text.js';
 import { fetchText } from './http.js';
 import { parseFeed } from './feed.js';
 
-const ROUTES = { instagram: 'instagram/user', twitter: 'twitter/user' };
+const ROUTES = { twitter: 'twitter/user' };
 
 export function bridgeBase() {
   const raw = process.env.MOTOBUZZ_BRIDGE_URL;

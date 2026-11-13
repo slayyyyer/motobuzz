@@ -12,9 +12,6 @@
     "dev": "node proxy/server.js",
     "cache": "node scripts/build-buzz-cache.js",
     "cache:local": "node scripts/build-buzz-cache.js --relay http://127.0.0.1:8080",
-    "test": "node tests/run.js",
-    "capture": "node scripts/capture-local.mjs",
-    "capture:instagram": "node scripts/capture-local.mjs instagram",
-    "capture:reddit": "node scripts/capture-local.mjs reddit"
+    "test": "node tests/run.js"
   }
 }

@@ -15,7 +15,7 @@
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 
@@ -24,18 +24,12 @@ import {
   ENTITY_BY_ID,
   FETCH,
   INGEST,
-  INSTAGRAM_CAPTURE,
-  REDDIT_CAPTURE,
   SITE,
   WINDOW,
 } from '../src/config.js';
 import { sleep } from '../src/adapters/http.js';
 import { isJunkTitle, loadNewsSource, newsSourceDefs } from '../src/adapters/news.js';
-import { loadRedditSource, redditSourceDefs } from '../src/adapters/reddit.js';
 import { loadYoutubeSource, youtubeSourceDefs } from '../src/adapters/youtube.js';
-import { instagramSourceDefs, loadInstagramSource } from '../src/adapters/instagram.js';
-import { parseInstagramCapture } from '../src/adapters/instagram-capture.js';
-import { parseRedditCapture } from '../src/adapters/reddit-capture.js';
 import { bridgeBase, bridgeSourceDefs, loadBridgeSource } from '../src/adapters/bridge.js';
 import { classify } from '../src/engine/classify.js';
 import { buildSnapshot, isEligible, stableId, urlKey } from '../src/engine/score.js';
@@ -108,20 +102,6 @@ async function readPreviousCache() {
   return null;
 }
 
-/**
- * Read one committed local capture, if there is one. A missing or unreadable
- * file is not an error: the live routes simply run on their own.
- */
-async function readCapture(configPath, parse) {
-  const path = resolve(ROOT, configPath);
-  if (!existsSync(path)) return null;
-  try {
-    return parse(JSON.parse(await readFile(path, 'utf8')));
-  } catch {
-    return null;
-  }
-}
-
 async function runSource(def, loader, extra = {}) {
   const started = Date.now();
   try {
@@ -132,7 +112,6 @@ async function runSource(def, loader, extra = {}) {
       error: outcome.error ?? null,
       note: outcome.note ?? null,
       records: outcome.records || [],
-      snapshot: outcome.snapshot ?? null,
       fetchedAt,
       elapsedMs: Date.now() - started,
     };
@@ -143,7 +122,6 @@ async function runSource(def, loader, extra = {}) {
       error: errorText(error),
       note: null,
       records: [],
-      snapshot: null,
       fetchedAt,
       elapsedMs: Date.now() - started,
     };
@@ -174,60 +152,20 @@ function normalizeRecord(record) {
   };
 }
 
-/**
- * Keep the parsed rider pages next to the cache, one file per handle, so a post
- * on the site can be traced back to the page it came from. Gitignored: build
- * output, not source.
- */
-async function saveSocialSnapshots(attempts) {
-  const directory = resolve(ROOT, 'data/social');
-  await mkdir(directory, { recursive: true });
-  let saved = 0;
-  for (const attempt of attempts) {
-    if (!attempt.snapshot?.handle) continue;
-    const payload = { sourceId: attempt.def.id, fetchedAt: attempt.fetchedAt, ...attempt.snapshot };
-    await writeFile(join(directory, `${attempt.snapshot.handle}.json`), `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
-    saved += 1;
-  }
-  return saved;
-}
-
 async function main() {
   log(`MotoBuzz cache build — ${new Date(now).toISOString()}${relay ? ` via ${relay}` : ' (direct)'}`);
 
-  // The Instagram fallback needs to know which permalinks earlier runs already covered.
   const previous = await readPreviousCache();
-  const seenPostCodes = new Set();
-  for (const item of previous?.items ?? []) {
-    const match = String(item.url || '').match(/instagram\.com\/p\/([A-Za-z0-9_-]{6,})/);
-    if (match) seenPostCodes.add(match[1]);
-  }
 
   const newsDefs = newsSourceDefs();
-  const redditDefs = redditSourceDefs();
   const youtubeDefs = youtubeSourceDefs();
-  const instagramDefs = instagramSourceDefs();
   const bridgeDefs = bridgeSourceDefs();
   const bridgeIsConfigured = Boolean(bridgeBase());
 
-  // Captures made on a home connection stand in wherever the runner is refused.
-  const instagramCapture = await readCapture(INSTAGRAM_CAPTURE.path, parseInstagramCapture);
-  const redditCapture = await readCapture(REDDIT_CAPTURE.path, parseRedditCapture);
-  for (const [label, capture, field] of [
-    ['Instagram', instagramCapture, 'handles'],
-    ['Reddit', redditCapture, 'subreddits'],
-  ]) {
-    if (!capture) continue;
-    const count = Object.keys(capture[field]).length;
-    const ageHours = capture.capturedAt ? Math.round((now - capture.capturedAt) / 3_600_000) : null;
-    const age = ageHours === null ? '' : `, ${ageHours} h old`;
-    log(`  local ${label} capture: ${count} source(s)${age}`);
-  }
-
   // Google News throttles a burst of queries and answers an empty feed instead of
   // an error, which would blank a group silently. Its queries therefore run one at
-  // a time with a pause, like the Reddit fetches. Direct feeds and YouTube hit
-  // different hosts and stay concurrent.
+  // a time with a pause. Direct feeds and YouTube hit different hosts and stay
+  // concurrent.
   const feedDefs = newsDefs.filter((def) => def.type !== 'google');
   const googleDefs = newsDefs.filter((def) => def.type === 'google');
 
@@ -251,17 +189,6 @@ async function main() {
     googleResults.push(result);
   }
 
-  const redditResults = [];
-  for (const [index, def] of redditDefs.entries()) {
-    if (index > 0) await sleep(FETCH.redditSpacingMs);
-    redditResults.push(await runSource(def, loadRedditSource, { capture: redditCapture }));
-  }
-
-  const instagramResults = [];
-  for (const def of instagramDefs) {
-    instagramResults.push(await runSource(def, loadInstagramSource, { seenPostCodes, capture: instagramCapture }));
-  }
-
   const bridgeResults = [];
   for (const def of bridgeDefs) {
     if (!bridgeIsConfigured) {
@@ -279,13 +206,7 @@ async function main() {
     bridgeResults.push(await runSource(def, loadBridgeSource));
   }
 
-  const attempts = [
-    ...concurrent,
-    ...googleResults,
-    ...redditResults,
-    ...instagramResults,
-    ...bridgeResults,
-  ];
+  const attempts = [...concurrent, ...googleResults, ...bridgeResults];
 
   // --- continuity -----------------------------------------------------------
   const previousSources = new Map(
@@ -409,12 +330,6 @@ async function main() {
     build: {
       relay: Boolean(relay),
       bridge: bridgeIsConfigured,
-      instagramCapture: instagramCapture
-        ? { handles: Object.keys(instagramCapture.handles).length, capturedAt: instagramCapture.capturedAt }
-        : null,
-      redditCapture: redditCapture
-        ? { subreddits: Object.keys(redditCapture.subreddits).length, capturedAt: redditCapture.capturedAt }
-        : null,
       durationMs: Number((process.hrtime.bigint() - startedAt) / 1_000_000n),
       sourcesAttempted: sources.length,
       sourcesLive: liveSources,
@@ -462,7 +377,6 @@ async function main() {
 
   await mkdir(dirname(outPath), { recursive: true });
   await writeFile(outPath, `${JSON.stringify(cache, null, 2)}\n`, 'utf8');
-  const snapshotsSaved = await saveSocialSnapshots(attempts);
 
   // --- report ---------------------------------------------------------------
   reportSources();
@@ -479,7 +393,6 @@ async function main() {
     const detail = enrichment.error ? ` (${enrichment.error})` : '';
     log(`  enrichment: ${enrichment.labelled}/${enrichment.requested} records labelled via ${enrichment.model}${detail}`);
   }
-  if (snapshotsSaved > 0) log(`  saved ${snapshotsSaved} Instagram page snapshots under data/social/`);
   log('');
 
   if (recordedSources === 0) {

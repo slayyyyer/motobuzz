@@ -466,7 +466,7 @@ function renderMethod(state) {
             : 'No LLM labels configured; topics come from the keyword lists only.'
         }</li>
         <li>${build.relay ? 'Fetched through the allowlisted relay.' : 'Fetched directly from the runner.'} ${
-          build.bridge ? 'A social bridge is configured for X.' : 'Instagram is read from public profile pages; X needs a bridge.'
+          build.bridge ? 'A social bridge is configured for X.' : 'X is read only through an operator-run bridge.'
         }</li>
       </ul>`
     : '<p class="panel-sub">No build information in this snapshot.</p>';
@@ -502,8 +502,8 @@ function renderMethod(state) {
         <li>The same story is counted once, matched by URL and by normalized headline, so syndicated copies do not inflate the meter.</li>
         <li>Topics and names come from fixed keyword and alias lists in <code>src/config.js</code>. No language model runs anywhere.</li>
         <li>A source that fails keeps its still-valid earlier records and is labelled cached; a genuinely empty response is labelled empty, not cached.</li>
-        <li>Pinned subreddit posts and undated items are dropped rather than dated by guesswork.</li>
-        <li>Engagement is used only where a source publishes it: YouTube view counts. Reddit's public feed carries no score, so it adds volume, not audience.</li>
+        <li>Undated items are dropped rather than dated by guesswork.</li>
+        <li>Engagement is used only where a source publishes it: YouTube view counts.</li>
         <li>The cache is rebuilt once an hour. Nothing on this page can refresh itself into a stronger reading.</li>
       </ul>
     </div>

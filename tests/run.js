@@ -7,18 +7,6 @@ import assert from 'node:assert/strict';
 import { parseFeed, parseDate } from '../src/adapters/feed.js';
 import { extractChannelVideos } from '../src/adapters/youtube.js';
 import {
-  extractPostMeta,
-  extractProfile,
-  isMetadataRateLimited,
-  parseMicrolinkPost,
-  parseSearchCodes,
-  parseWebProfile,
-  sessionConfig,
-  shortcodeFromPk,
-} from '../src/adapters/instagram.js';
-import { captureRecordsFor, parseInstagramCapture } from '../src/adapters/instagram-capture.js';
-import { parseRedditCapture, redditCaptureRecordsFor } from '../src/adapters/reddit-capture.js';
-import {
   applyEnrichment,
   enrichLabels,
   enrichmentConfig,
@@ -50,9 +38,7 @@ import {
 import {
   BUZZ,
   DECAY,
-  INSTAGRAM_CAPTURE,
   NEWS_QUERIES,
-  REDDIT_CAPTURE,
   RIDER_QUERY_GROUP_SIZE,
   RIDERS,
   WINDOW,
@@ -126,7 +112,7 @@ const RSS = `<?xml version="1.0"?><rss version="2.0" xmlns:dc="http://purl.org/d
 </channel></rss>`;
 
 const ATOM = `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><title>Sub</title>
-<entry><title>Top post</title><link rel="alternate" href="https://www.reddit.com/r/Motocross/comments/x/top_post/" />
+<entry><title>Top post</title><link rel="alternate" href="https://example.com/community/top_post" />
 <updated>2026-10-31T09:00:00Z</updated><content type="html"><![CDATA[<p>Body text</p>]]></content></entry>
 </feed>`;
 
@@ -144,7 +130,7 @@ test('parses Atom entries and alternate links', () => {
   const parsed = parseFeed(ATOM);
   assert.equal(parsed.ok, true);
   assert.equal(parsed.kind, 'atom');
-  assert.equal(parsed.items[0].link, 'https://www.reddit.com/r/Motocross/comments/x/top_post/');
+  assert.equal(parsed.items[0].link, 'https://example.com/community/top_post');
   assert.equal(parsed.items[0].summary, 'Body text');
 });
 
@@ -186,291 +172,6 @@ test('extracts channel videos from the page JSON', () => {
 
 test('a page with no entries yields nothing rather than throwing', () => {
   assert.deepEqual(extractChannelVideos('<html><body>nope</body></html>', NOW), []);
-});
-
-/* ---------- instagram ---------- */
-
-const IG_PROFILE_HTML = `<html><body><script type="application/json" data-sjs>${JSON.stringify({
-  bbox: {
-    result: {
-      data: {
-        xig_user_by_igid_v2: {
-          username: 'kenroczen94',
-          full_name: 'Ken Roczen',
-          follower_count: 1_738_443,
-          biography: '2026 Supercross Champ',
-          polaris_timeline_connection: {
-            edges: [
-              { node: { pk: '4019950133779236635', media_type: 1, caption: { text: 'KENNY TAKES THE WIN IN AUCKLAND' } } },
-              { node: { pk: '4019879548253793724', media_type: 2, caption: null } },
-            ],
-          },
-        },
-      },
-    },
-  },
-})}</script></body></html>`;
-
-test('lifts profile stats and recent posts out of a crawler page', () => {
-  const profile = extractProfile(IG_PROFILE_HTML);
-  assert.equal(profile.username, 'kenroczen94');
-  assert.equal(profile.followers, 1_738_443);
-  assert.equal(profile.posts.length, 2);
-  assert.equal(profile.posts[0].shortcode, 'DfJu1kasgcb');
-  assert.equal(profile.posts[0].isVideo, false);
-  assert.equal(profile.posts[1].isVideo, true);
-  assert.equal(profile.posts[1].caption, null);
-});
-
-test('a page with no timeline yields no posts rather than throwing', () => {
-  const profile = extractProfile('<html><body>login</body></html>');
-  assert.deepEqual(profile.posts, []);
-  assert.equal(profile.username, null);
-});
-
-const IG_ORDERED_HTML = `<html><body><script type="application/json" data-sjs>${JSON.stringify({
-  data: {
-    xig_user_by_username: {
-      pk: '1643027426',
-      username: 'eli_tomac',
-      full_name: 'Eli Tomac',
-      follower_count: 1_400_000,
-      polaris_ordered_timeline_connection: {
-        edges: [
-          { node: { pk: '894353666430332098', code: 'xpYevPJezC', media_type: 1, caption: null } },
-          { node: { pk: '894360000000000001', code: 'xpYevPJezD', media_type: 2, caption: { text: 'Auckland' } } },
-        ],
-      },
-    },
-  },
-})}</script></body></html>`;
-
-test('reads the renamed 2026 timeline, newest post first', () => {
-  const profile = extractProfile(IG_ORDERED_HTML);
-  assert.equal(profile.username, 'eli_tomac');
-  assert.equal(profile.fullName, 'Eli Tomac');
-  assert.equal(profile.followers, 1_400_000);
-  assert.equal(profile.posts.length, 2);
-  // `code` is the shortcode, and the higher media id is the newer post.
-  assert.equal(profile.posts[0].shortcode, 'xpYevPJezD');
-  assert.equal(profile.posts[0].isVideo, true);
-  assert.equal(profile.posts[0].caption, 'Auckland');
-  assert.equal(profile.posts[1].shortcode, 'xpYevPJezC');
-});
-test('media ids turn into the post shortcodes Instagram uses', () => {
-  assert.equal(shortcodeFromPk('4019950133779236635'), 'DfJu1kasgcb');
-  assert.equal(shortcodeFromPk('not-a-number'), null);
-});
-
-test('finds post permalinks in plain and encoded search results', () => {
-  const plain =
-    '<a href="https://www.instagram.com/p/DfJu1kasgcb/">x</a>' +
-    '<a href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.instagram.com%2Freel%2FDNic4H4gD7W%2F">y</a>';
-  assert.deepEqual(parseSearchCodes(plain), ['DfJu1kasgcb', 'DNic4H4gD7W']);
-  assert.deepEqual(parseSearchCodes('<html>no links</html>'), []);
-});
-
-test('reads metadata for one post and centres its unknown hour at midday', () => {
-  const payload = {
-    data: {
-      date: '2026-10-31T00:00:00.000Z',
-      description: '13K likes, 48 comments - ausxsupercross on October 31, 2026: "KENNY TAKES THE WIN IN AUCKLAND".',
-    },
-  };
-  const post = parseMicrolinkPost(payload, 'DfJu1kasgcb');
-  assert.equal(post.likes, 13_000);
-  assert.equal(post.comments, 48);
-  assert.equal(post.author, 'ausxsupercross');
-  assert.equal(post.publishedAt, Date.parse('2026-10-31T12:00:00.000Z'));
-  assert.equal(post.dateBasis, 'day');
-  assert.match(post.caption, /KENNY TAKES/);
-  assert.equal(parseMicrolinkPost({ data: {} }, 'x'), null);
-  assert.equal(parseMicrolinkPost(null, 'x'), null);
-  assert.equal(isMetadataRateLimited({ status: 'fail', code: 'ERATE', message: 'daily' }), true);
-  assert.equal(isMetadataRateLimited({ status: 'success', data: {} }), false);
-});
-
-test('reads an authenticated profile response with its exact timestamps', () => {
-  const payload = {
-    data: {
-      user: {
-        username: 'kenroczen94',
-        full_name: 'Ken Roczen',
-        biography: '94',
-        edge_followed_by: { count: 1_738_443 },
-        edge_owner_to_timeline_media: {
-          edges: [
-            {
-              node: {
-                shortcode: 'DfJu1kasgcb',
-                taken_at_timestamp: 1_793_496_853,
-                is_video: false,
-                edge_liked_by: { count: 13_000 },
-                edge_media_to_comment: { count: 46 },
-                edge_media_to_caption: { edges: [{ node: { text: 'Auckland' } }] },
-              },
-            },
-          ],
-        },
-      },
-    },
-  };
-  const profile = parseWebProfile(payload);
-  assert.equal(profile.error, null);
-  assert.equal(profile.followers, 1_738_443);
-  assert.equal(profile.posts[0].publishedAt, 1_793_496_853_000);
-  assert.equal(profile.posts[0].likes, 13_000);
-  assert.equal(profile.posts[0].caption, 'Auckland');
-
-  assert.equal(parseWebProfile({ message: 'login_required', status: 'fail' }).error, 'login_required');
-  assert.equal(parseWebProfile({ message: 'checkpoint_required' }).error, 'checkpoint_required');
-  assert.equal(parseWebProfile(null).error, 'no_user');
-});
-
-test('accepts a bare session id or a pasted cookie header, and nothing else', () => {
-  assert.equal(sessionConfig({}), null);
-  assert.equal(sessionConfig({ INSTAGRAM_SESSIONID: '   ' }), null);
-  assert.equal(sessionConfig({ INSTAGRAM_SESSIONID: 'abc123' }).cookie, 'sessionid=abc123');
-  assert.equal(
-    sessionConfig({ INSTAGRAM_SESSIONID: 'sessionid=abc123; ds_user_id=42' }).cookie,
-    'sessionid=abc123; ds_user_id=42',
-  );
-  // A whole browser jar survives: the extra cookies are what make the session
-  // look like the browser that created it, which is what Instagram checks.
-  assert.equal(
-    sessionConfig({ INSTAGRAM_SESSIONID: 'csrftoken=abc; sessionid=xyz; mid=def; ig_did=ghi' }).cookie,
-    'csrftoken=abc; sessionid=xyz; mid=def; ig_did=ghi',
-  );
-  assert.equal(sessionConfig({ INSTAGRAM_SESSIONID: 'csrftoken=abc; mid=def' }), null);
-});
-
-test('reads a post page for its publish time and engagement', () => {
-  const html = `<html><head><meta property="og:description" content="13K likes, 46 comments - ausxsupercross on October 31, 2026: &quot;KENNY TAKES THE WIN&quot;. "></head><body><script>var d={"taken_at":1793496853};</script></body></html>`;
-  const meta = extractPostMeta(html);
-  assert.equal(meta.publishedAt, 1_793_496_853_000);
-  assert.equal(meta.likes, 13_000);
-  assert.equal(meta.comments, 46);
-  assert.equal(meta.author, 'ausxsupercross');
-});
-
-test('falls back to the earliest time stamp, and never invents a date', () => {
-  const stamped =
-    '<html><body><time dateTime="2026-10-31T08:30:56.000Z">19h</time><time dateTime="2026-11-01T01:50:03.000Z">2h</time></body></html>';
-  assert.equal(extractPostMeta(stamped).publishedAt, Date.parse('2026-10-31T08:30:56.000Z'));
-  assert.equal(extractPostMeta('<html><body>nothing here</body></html>').publishedAt, null);
-});
-
-test('a committed local capture stands in when the runner cannot read the page', () => {
-  const def = {
-    id: 'ig-test',
-    label: 'Instagram · Test',
-    handle: 'testrider',
-    homepage: 'https://www.instagram.com/testrider/',
-    url: 'https://www.instagram.com/testrider/',
-  };
-  const now = Date.parse('2026-11-01T12:00:00Z');
-  const raw = {
-    capturedAt: now - 2 * 3_600_000,
-    handles: {
-      testrider: {
-        capturedAt: now - 2 * 3_600_000,
-        via: 'profile page',
-        username: 'testrider',
-        followers: 12,
-        posts: [
-          {
-            url: 'https://www.instagram.com/p/AAA111/',
-            title: 'Auckland',
-            summary: null,
-            publishedAt: now - 3_600_000,
-            dateBasis: 'exact',
-            likes: 1300,
-            comments: 46,
-          },
-          // Kept in the file, but outside the retention window, so never counted.
-          {
-            url: 'https://www.instagram.com/p/OLD222/',
-            title: 'Old news',
-            publishedAt: now - 100 * 3_600_000,
-            dateBasis: 'exact',
-            likes: 5,
-            comments: 0,
-          },
-        ],
-      },
-    },
-  };
-
-  assert.equal(parseInstagramCapture(null), null);
-  assert.equal(parseInstagramCapture({ handles: [] }), null);
-
-  const capture = parseInstagramCapture(raw);
-  const outcome = captureRecordsFor(capture, def, { now });
-  assert.equal(outcome.status, 'cached');
-  assert.equal(outcome.records.length, 1);
-  assert.equal(outcome.records[0].url, 'https://www.instagram.com/p/AAA111/');
-  assert.equal(outcome.records[0].engagement, 1300);
-  assert.equal(outcome.records[0].replies, 46);
-  assert.equal(outcome.records[0].dateBasis, 'exact');
-  assert.equal(outcome.records[0].sourceId, 'ig-test');
-  assert.match(outcome.note, /2 h ago/);
-
-  // Handles match without case, so a capture keyed by the page handle still lands.
-  assert.equal(captureRecordsFor(capture, { ...def, handle: 'TestRider' }, { now }).records.length, 1);
-  // A handle with no entry falls through to the live routes instead of inventing data.
-  assert.equal(captureRecordsFor(capture, { ...def, handle: 'someone-else' }, { now }), null);
-  // Past INSTAGRAM_CAPTURE.maxAgeHours the capture is ignored entirely.
-  assert.equal(captureRecordsFor(capture, def, { now: now + (INSTAGRAM_CAPTURE.maxAgeHours + 1) * 3_600_000 }), null);
-});
-
-test('a committed Reddit capture stands in when the feed is throttled', () => {
-  const def = {
-    id: 'reddit-test',
-    label: 'r/Test',
-    sub: 'Test',
-    homepage: 'https://www.reddit.com/r/Test/',
-  };
-  const now = Date.parse('2026-11-01T12:00:00Z');
-  const raw = {
-    capturedAt: now - 3_600_000,
-    subreddits: {
-      test: {
-        capturedAt: now - 3_600_000,
-        posts: [
-          {
-            url: 'https://www.reddit.com/r/Test/comments/abc123/a_thread/',
-            title: 'Jett Lawrence signs a new deal',
-            publishedAt: now - 2 * 3_600_000,
-            dateBasis: 'exact',
-          },
-          // Kept in the file, but outside the retention window, so never counted.
-          {
-            url: 'https://www.reddit.com/r/Test/comments/old999/stale/',
-            title: 'Stale thread',
-            publishedAt: now - 90 * 3_600_000,
-          },
-        ],
-      },
-    },
-  };
-
-  assert.equal(parseRedditCapture(null), null);
-  assert.equal(parseRedditCapture({ subreddits: [] }), null);
-
-  const capture = parseRedditCapture(raw);
-  const outcome = redditCaptureRecordsFor(capture, def, { now });
-  assert.equal(outcome.status, 'cached');
-  assert.equal(outcome.records.length, 1);
-  assert.equal(outcome.records[0].sourceId, 'reddit-test');
-  assert.equal(outcome.records[0].channel, 'r/Test');
-  assert.match(outcome.note, /1 h ago/);
-
-  // Subreddits match without case, so a capture keyed by the feed name still lands.
-  assert.equal(redditCaptureRecordsFor(capture, { ...def, sub: 'tEsT' }, { now }).records.length, 1);
-  // A subreddit with no entry falls through to the live feed instead of inventing posts.
-  assert.equal(redditCaptureRecordsFor(capture, { ...def, sub: 'Unknown' }, { now }), null);
-  // Past REDDIT_CAPTURE.maxAgeHours the capture is ignored entirely.
-  assert.equal(redditCaptureRecordsFor(capture, def, { now: now + (REDDIT_CAPTURE.maxAgeHours + 1) * 3_600_000 }), null);
 });
 
 /* ---------- optional LLM enrichment ---------- */
@@ -905,27 +606,22 @@ test('unknown source statuses are discarded', () => {
 test('allows known upstreams', () => {
   assert.equal(matchUpstream('https://www.supercrosslive.com/rss').allowed, true);
   assert.equal(matchUpstream('https://news.google.com/rss/search?q=motocross').allowed, true);
-  assert.equal(matchUpstream('https://www.reddit.com/r/Motocross/.rss').allowed, true);
   assert.equal(matchUpstream('https://www.youtube.com/@vitalmx/videos').allowed, true);
-  assert.equal(matchUpstream('https://www.instagram.com/kenroczen94/').allowed, true);
-  assert.equal(typeof matchUpstream('https://www.instagram.com/p/DfJu1kasgcb/').rule.userAgent, 'string');
-  assert.equal(matchUpstream('https://api.microlink.io/?url=x').allowed, true);
-  assert.equal(matchUpstream('https://html.duckduckgo.com/html/?q=x').allowed, true);
 });
 
 test('refuses everything else', () => {
   assert.equal(matchUpstream('http://www.supercrosslive.com/rss').allowed, false);
   assert.equal(matchUpstream('https://evil.example.com/rss').allowed, false);
   assert.equal(matchUpstream('https://127.0.0.1/rss').allowed, false);
-  assert.equal(matchUpstream('https://user:pass@www.reddit.com/r/x/.rss').allowed, false);
-  assert.equal(matchUpstream('https://www.reddit.com:8443/r/x/.rss').allowed, false);
-  assert.equal(matchUpstream('https://www.reddit.com/r/../../etc/passwd').allowed, false);
+  assert.equal(matchUpstream('https://user:pass@www.supercrosslive.com/rss').allowed, false);
+  assert.equal(matchUpstream('https://www.supercrosslive.com:8443/rss').allowed, false);
+  assert.equal(matchUpstream('https://www.supercrosslive.com/rss/../../etc/passwd').allowed, false);
 });
 
 test('a configured bridge origin is the only extra allowance', () => {
   const bridge = new URL('https://bridge.internal.example');
-  assert.equal(matchUpstream('https://bridge.internal.example/instagram/user/x', bridge).allowed, true);
-  assert.equal(matchUpstream('https://bridge.internal.example/instagram/user/x').allowed, false);
+  assert.equal(matchUpstream('https://bridge.internal.example/twitter/user/x', bridge).allowed, true);
+  assert.equal(matchUpstream('https://bridge.internal.example/twitter/user/x').allowed, false);
 });
 
 /* ---------- runner ---------- */

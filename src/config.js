@@ -2,8 +2,8 @@
  * MotoBuzz's fixed configuration.
  *
  * Everything a person might reasonably want to change lives here: the feeds,
- * the subreddits, the rider and brand watchlist, the topic keywords, the decay
- * schedule, and the thresholds that turn accumulated chatter into a number.
+ * the YouTube channels, the rider and brand watchlist, the topic keywords, the
+ * decay schedule, and the thresholds that turn accumulated chatter into a number.
  */
 
 export const SITE = Object.freeze({
@@ -335,14 +335,6 @@ export const NEWS_TITLE_DENYLIST = Object.freeze([
   /\blive score(card)?\b/i,
 ]);
 
-export const SUBREDDITS = Object.freeze([
-  { id: 'reddit-motocross', sub: 'Motocross', label: 'r/Motocross' },
-  { id: 'reddit-supercross', sub: 'supercross', label: 'r/supercross' },
-  { id: 'reddit-mxgp', sub: 'MXGP', label: 'r/MXGP' },
-]);
-
-export const REDDIT_ENDPOINT = 'https://www.reddit.com';
-
 export const YOUTUBE_CHANNELS = Object.freeze([
   { id: 'yt-supercrosslive', handle: 'SupercrossLIVE', label: 'Monster Energy Supercross' },
   { id: 'yt-supermotocross', handle: 'SuperMotocross', label: 'SuperMotocross' },
@@ -361,105 +353,6 @@ export const YOUTUBE_CHANNELS = Object.freeze([
 export const YOUTUBE_BASE = 'https://www.youtube.com';
 
 /**
- * Instagram answers a browser with a login shell, but a crawler user agent gets
- * the rendered profile page. These handles were checked against the live pages:
- * a wrong handle still returns 200, but as a tiny account with zero posts.
- */
-export const INSTAGRAM_CRAWLER_UA =
-  'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
-
-export const INSTAGRAM_PROFILES = Object.freeze([
-  { id: 'ig-kenroczen', handle: 'kenroczen94', label: 'Instagram · Ken Roczen' },
-  { id: 'ig-jettlawrence', handle: 'jettson18', label: 'Instagram · Jett Lawrence' },
-  { id: 'ig-haidendeegan', handle: 'dangerboydeegan', label: 'Instagram · Haiden Deegan' },
-  { id: 'ig-hunterlawrence', handle: 'hunterlawrence', label: 'Instagram · Hunter Lawrence' },
-  { id: 'ig-elitomac', handle: 'elitomac', label: 'Instagram · Eli Tomac' },
-  { id: 'ig-chasesexton', handle: 'chasesexton', label: 'Instagram · Chase Sexton' },
-  { id: 'ig-cooperwebb', handle: 'cooperwebb2', label: 'Instagram · Cooper Webb' },
-  { id: 'ig-supermotocross', handle: 'supermotocross', label: 'Instagram · SuperMotocross' },
-  { id: 'ig-supercrosslive', handle: 'supercrosslive', label: 'Instagram · Supercross LIVE' },
-  { id: 'ig-mxgp', handle: 'mxgp', label: 'Instagram · MXGP' },
-  // Team and brand accounts post every race weekend, where a rider who is not
-  // racing may not post at all. Follower counts were read from the live pages.
-  { id: 'ig-starracing', handle: 'starracingyamaha', label: 'Instagram · Star Racing Yamaha' },
-  { id: 'ig-monsterenergy', handle: 'monsterenergy', label: 'Instagram · Monster Energy' },
-  { id: 'ig-ktmfactory', handle: 'ktmfactoryracing', label: 'Instagram · KTM Factory Racing' },
-  { id: 'ig-yamahausa', handle: 'yamahamotorusa', label: 'Instagram · Yamaha Motor USA' },
-]);
-
-/**
- * Coarse route for hosts Instagram refuses: DuckDuckGo finds post permalinks and
- * microlink reads one post from its own infrastructure. It reports the publish
- * DAY, so its records are marked as day-precision, and the free tier is small —
- * hence the interval and the hard per-run call cap.
- */
-export const INSTAGRAM_FALLBACK = Object.freeze({
-  searchUrl: 'https://html.duckduckgo.com/html/',
-  metadataUrl: 'https://api.microlink.io/',
-  searchUserAgent:
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
-  /** Run discovery only every N hours: the metadata API allows tens of calls a day. */
-  intervalHours: 3,
-  searchResults: 10,
-  metadataCallsPerRun: 6,
-  postsPerProfile: 2,
-});
-
-/**
- * A profile read captured by running this build on an ordinary home connection,
- * where Instagram serves the real page instead of a login shell. The hourly
- * build reads the committed snapshot whenever it cannot read the page itself.
- * See `npm run instagram:capture`.
- */
-export const INSTAGRAM_CAPTURE = Object.freeze({
-  /** Where the capture is committed; the build reads it from the checkout. */
-  path: 'snapshots/instagram.json',
-  /**
-   * A capture older than this is ignored and the live routes run instead. Four
-   * days, not two: the capture is made by hand, and a weekend gap should not
-   * throw away reads that are still recent enough to describe.
-   */
-  maxAgeHours: 96,
-});
-
-/**
- * The same arrangement for Reddit, which throttles datacenter traffic: on most
- * runner builds two of the three subreddits come back 429. See
- * `npm run capture:reddit`.
- */
-export const REDDIT_CAPTURE = Object.freeze({
-  path: 'snapshots/reddit.json',
-  /** Same four-day trust window as the Instagram capture. */
-  maxAgeHours: 96,
-});
-/**
- * An authenticated read of the same private profile endpoint Instagram's own
- * web app calls. The cookie comes from a manual sign-in made by a person, never
- * from a login attempt here: a datacenter IP is exactly what Instagram
- * challenges, and a failed login is what gets an account flagged.
- */
-export const INSTAGRAM_SESSION = Object.freeze({
-  appId: '936619743392459',
-  /**
-   * Instagram answers a bare `400 SecFetch Policy violation.` without these;
-   * with them the same request reaches the endpoint and returns real JSON.
-   */
-  headers: Object.freeze({
-    'sec-fetch-site': 'same-origin',
-    'sec-fetch-mode': 'cors',
-    'sec-fetch-dest': 'empty',
-    origin: 'https://www.instagram.com',
-    'x-asbd-id': '129477',
-    'accept-language': 'en-US,en;q=0.9',
-  }),
-  profileUrl: 'https://i.instagram.com/api/v1/users/web_profile_info/',
-  userAgent:
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
-  /** How many of the newest posts to keep per profile when a session works. */
-  postsPerProfile: 4,
-});
-
-/**
  * Optional operator-run RSS bridge (a self-hosted RSSHub, for example) for X,
  * which still refuses anonymous reads. Nothing is fetched from it unless
  * MOTOBUZZ_BRIDGE_URL is set for the build.
@@ -472,8 +365,6 @@ export const BRIDGE_HANDLES = Object.freeze([
 export const FETCH = Object.freeze({
   timeoutMs: 12_000,
   maxBytes: 4 * 1024 * 1024,
-  /** Reddit throttles datacenter traffic, so its requests are spaced out. */
-  redditSpacingMs: 2_500,
   /**
    * Google News answers a burst of index queries with throttling, and a throttled
    * query comes back as an empty feed rather than an error. The twelve queries
@@ -486,14 +377,10 @@ export const FETCH = Object.freeze({
 
 export const INGEST = Object.freeze({
   itemsPerFeed: 30,
-  itemsPerSubreddit: 25,
   itemsPerChannel: 12,
   itemsPerBridge: 12,
   maxTitleLength: 240,
   maxSummaryLength: 320,
-  instagramPostsPerProfile: 4,
-  instagramSpacingMs: 700,
-  instagramTimeoutMs: 20_000,
   bridgeTimeoutMs: 20_000,
 });
 
