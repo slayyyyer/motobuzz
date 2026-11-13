@@ -213,13 +213,21 @@ async function main() {
     (previous?.sources || []).filter((source) => source?.sourceId).map((source) => [source.sourceId, source]),
   );
 
+  // Continuity must not resurrect a source that config.js no longer names: its
+  // old records would otherwise keep counting until they aged out.
+  const configuredSourceIds = new Set(attempts.map((attempt) => attempt.def.id));
   const retainedBySource = new Map();
   const retained = [];
+  let unconfiguredRetained = 0;
   if (previous) {
     for (const item of previous.items) {
       if (!isEligible(item, now)) continue;
       // A headline the denylist would reject today must not survive by being old.
       if (isJunkTitle(item.title)) continue;
+      if (!configuredSourceIds.has(item.sourceId)) {
+        unconfiguredRetained += 1;
+        continue;
+      }
       retainedBySource.set(item.sourceId, (retainedBySource.get(item.sourceId) || 0) + 1);
       retained.push(item);
     }
@@ -386,6 +394,11 @@ async function main() {
   if (offTarget > 0) {
     log(
       `  ${offTarget} rider-query record${offTarget === 1 ? '' : 's'} named no watched rider or no motocross context, dropped`,
+    );
+  }
+  if (unconfiguredRetained > 0) {
+    log(
+      `  ${unconfiguredRetained} retained record${unconfiguredRetained === 1 ? '' : 's'} dropped: the source is no longer configured`,
     );
   }
   log(`  wrote ${outPath}`);
