@@ -47,7 +47,16 @@ import {
   titleKey,
   truncate,
 } from '../src/lib/text.js';
-import { BUZZ, DECAY, INSTAGRAM_CAPTURE, REDDIT_CAPTURE, WINDOW } from '../src/config.js';
+import {
+  BUZZ,
+  DECAY,
+  INSTAGRAM_CAPTURE,
+  NEWS_QUERIES,
+  REDDIT_CAPTURE,
+  RIDER_QUERY_GROUP_SIZE,
+  RIDERS,
+  WINDOW,
+} from '../src/config.js';
 
 const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
@@ -599,6 +608,26 @@ test('finds Jalek Swoll in a real headline but not the word swollen', () => {
 
   const bare = classify({ title: 'Rider has a swollen ankle after the main event', summary: null });
   assert.ok(!bare.entities.includes('jalek-swoll'));
+});
+
+test('rider-name queries cover every rider on the watchlist', () => {
+  const queries = NEWS_QUERIES.filter((entry) => entry.id.startsWith('gnews-riders-'));
+  assert.ok(queries.length >= 2, 'the watchlist is split across several queries');
+
+  const covered = new Set();
+  const sizes = [];
+  for (const entry of queries) {
+    assert.ok(entry.query.length <= 320, `${entry.id} is too long for Google News`);
+    const names = entry.query.split(' OR ').map((part) => part.replace(/^"|"$/g, ''));
+    assert.ok(names.length <= RIDER_QUERY_GROUP_SIZE, `${entry.id} names too many riders`);
+    sizes.push(names.length);
+    for (const name of names) covered.add(name);
+  }
+  // Round-robin dealing: no group may be thin while another is full.
+  assert.ok(Math.max(...sizes) - Math.min(...sizes) <= 1, `uneven groups: ${sizes.join(',')}`);
+  for (const rider of RIDERS) {
+    assert.ok(covered.has(rider.name), `${rider.name} is never queried by name`);
+  }
 });
 
 test('does not match a keyword inside a larger word', () => {

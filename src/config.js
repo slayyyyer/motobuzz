@@ -281,6 +281,30 @@ export const FEEDS = Object.freeze([
   },
 ]);
 
+/**
+ * A rider-name query answers only a bounded number of terms, so the watchlist is
+ * asked for in small groups rather than one hand-picked shortlist: a long OR list
+ * silently stops covering its tail. Adding a rider to RIDERS is therefore all it
+ * takes for the news pass to look for them — no query has to be edited by hand.
+ */
+export const RIDER_QUERY_GROUP_SIZE = 8;
+
+function riderNameQueries() {
+  const groupCount = Math.ceil(RIDERS.length / RIDER_QUERY_GROUP_SIZE);
+  // Dealt out round-robin rather than sliced in order. The watchlist is ordered by
+  // how well covered a rider is, so a straight slice leaves the quiet tail in
+  // groups that return nothing build after build. One rider per group at a time
+  // keeps every group mixed and worth asking.
+  const groups = Array.from({ length: groupCount }, () => []);
+  RIDERS.forEach((rider, index) => groups[index % groupCount].push(rider));
+  return groups.map((group, index) => ({
+    id: `gnews-riders-${index + 1}`,
+    label: `Rider names ${index + 1}/${groups.length}`,
+    query: group.map((rider) => `"${rider.name}"`).join(' OR '),
+    when: '2d',
+  }));
+}
+
 /** Google News topic queries stand in for the outlets that block runners. */
 export const NEWS_QUERIES = Object.freeze([
   { id: 'gnews-motocross', label: 'Motocross', query: 'motocross', when: '3d' },
@@ -289,12 +313,7 @@ export const NEWS_QUERIES = Object.freeze([
   { id: 'gnews-smx', label: 'SuperMotocross', query: 'SuperMotocross motocross', when: '3d' },
   // Named riders catch the story whose headline never says "motocross",
   // which is most of them once the race reports are written.
-  {
-    id: 'gnews-riders',
-    label: 'Rider names',
-    query: '"Jett Lawrence" OR "Haiden Deegan" OR "Eli Tomac" OR "Cooper Webb"',
-    when: '2d',
-  },
+  ...riderNameQueries(),
   { id: 'gnews-pro-motocross', label: 'Pro Motocross', query: '"Pro Motocross" OR "motocross national"', when: '3d' },
 ]);
 
