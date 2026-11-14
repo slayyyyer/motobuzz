@@ -306,6 +306,7 @@ async function main() {
         configured: digest.configured,
         model: digest.model,
         claims: digest.claimCount,
+        returned: digest.returned,
         error: digest.error,
       },
       duplicatesDropped: duplicates,
@@ -372,7 +373,9 @@ async function main() {
   }
   if (digest.configured) {
     const detail = digest.error ? ` (${digest.error})` : '';
-    log(`  digest: ${digest.claimCount} cited claim${digest.claimCount === 1 ? '' : 's'} via ${digest.model}${detail}`);
+    log(
+      `  digest: ${digest.claimCount} cited claim${digest.claimCount === 1 ? '' : 's'} from ${digest.returned} returned via ${digest.model}${detail}`,
+    );
   }
   log('');
 

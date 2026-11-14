@@ -291,7 +291,7 @@ tests/run.js                the suite
 npm test
 ```
 
-68 tests using only Node's built-in assertions: text decoding, feed and Atom parsing, malformed-versus-empty
+69 tests using only Node's built-in assertions: text decoding, feed and Atom parsing, malformed-versus-empty
 diagnostics, the YouTube channel-feed reader and page extractor against fixtures, classifier and alias safety,
 decay and momentum, saturation, bucket accounting, cache validation, the digest's citation rules and fail-open path,
 the relay allowlist, continuity and dedupe, deprecated-source filtering, source status, the thin-build note,

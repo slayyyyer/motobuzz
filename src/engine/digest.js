@@ -30,12 +30,12 @@ function systemPrompt() {
     'You write a short, factual digest of motocross news from a fixed list of records.',
     'Return ONLY JSON: {"claims":[{"text":"<one sentence>","recordIds":["<record id>"]}]}',
     'Rules:',
-    '- 2 to 4 claims, each at most 240 characters.',
-    '- Every claim must be directly supported by the titles of the records it cites.',
+    '- 1 to 4 claims, each at most 240 characters.',
+    '- Every claim must be directly supported by the titles of the records it cites. Restating one record title in plain words is a valid claim.',
     '- recordIds must be ids from the given records. Never invent an id, name or fact.',
     '- Do not state a date, time, number, quote, injury, signing, result or cause that is not in the cited titles.',
     '- Do not repeat a claim. No hype, no speculation, no advice.',
-    '- If the titles support fewer than two claims, return {"claims":[]}.',
+    '- Return {"claims":[]} only if no title is clear enough to paraphrase.',
     'No prose, no code fences.',
   ].join('\n');
 }
@@ -51,21 +51,41 @@ export function digestInput(records) {
   }));
 }
 
-/** Tolerate fenced JSON and either a bare array or a {claims:[...]} envelope. */
-export function parseDigest(text) {
+/**
+ * Tolerate fenced JSON, a bare array, a {claims:[...]} envelope, and a short
+ * prose lead-in before the JSON. Returns the claims plus why parsing failed,
+ * so the build report can distinguish "not JSON" from "all claims rejected".
+ */
+export function parseDigestDetailed(text) {
   const trimmed = String(text || '')
     .trim()
     .replace(/^```(?:json)?/i, '')
     .replace(/```$/, '')
     .trim();
-  let parsed;
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch {
-    return [];
+
+  const attempts = [trimmed];
+  const start = trimmed.search(/[[{]/);
+  const end = Math.max(trimmed.lastIndexOf('}'), trimmed.lastIndexOf(']'));
+  if (start >= 0 && end > start) attempts.push(trimmed.slice(start, end + 1));
+
+  for (const attempt of attempts) {
+    let parsed;
+    try {
+      parsed = JSON.parse(attempt);
+    } catch {
+      continue;
+    }
+    const claims = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.claims) ? parsed.claims : [];
+    return {
+      claims: claims.filter((claim) => claim && typeof claim === 'object'),
+      reason: null,
+    };
   }
-  const claims = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.claims) ? parsed.claims : [];
-  return claims.filter((claim) => claim && typeof claim === 'object');
+  return { claims: [], reason: 'Response was not JSON.' };
+}
+
+export function parseDigest(text) {
+  return parseDigestDetailed(text).claims;
 }
 
 /**
@@ -82,10 +102,15 @@ export function applyDigest(rawClaims, records) {
     const text = typeof claim?.text === 'string' ? claim.text.trim().replace(/\s+/g, ' ') : '';
     if (text.length < MIN_CLAIM_CHARS || text.length > MAX_CLAIM_CHARS) continue;
 
-    const ids = [...new Set((Array.isArray(claim.recordIds) ? claim.recordIds : []).filter((id) => known.has(id)))].slice(
-      0,
-      MAX_IDS_PER_CLAIM,
-    );
+    const cited = claim.recordIds ?? claim.record_ids ?? [];
+    const ids = [
+      ...new Set(
+        (Array.isArray(cited) ? cited : [cited])
+          .filter((id) => typeof id === 'string')
+          .map((id) => id.trim())
+          .filter((id) => known.has(id)),
+      ),
+    ].slice(0, MAX_IDS_PER_CLAIM);
     if (ids.length === 0) continue;
     if (claims.some((existing) => existing.text.toLowerCase() === text.toLowerCase())) continue;
 
@@ -141,7 +166,7 @@ async function postDigest({ config, items, fetchImpl, signal }) {
  * @param {object[]} records Scored records, highest weight first.
  * @param {{env?: object, fetchImpl?: Function, now?: number}} [options]
  * @returns {Promise<{configured: boolean, model: string|null, digest: object|null,
- *   claimCount: number, error: string|null}>}
+ *   claimCount: number, returned: number, error: string|null}>}
  */
 export async function generateDigest(records, { env = process.env, fetchImpl = fetch, now = Date.now() } = {}) {
   const config = enrichmentConfig(env);
@@ -151,6 +176,7 @@ export async function generateDigest(records, { env = process.env, fetchImpl = f
     model: config?.model ?? null,
     digest: null,
     claimCount: 0,
+    returned: 0,
     error: null,
   };
   if (!config || items.length === 0) return report;
@@ -163,9 +189,15 @@ export async function generateDigest(records, { env = process.env, fetchImpl = f
       report.error = result.error;
       return report;
     }
-    const claims = applyDigest(parseDigest(result.text), items);
+    const parsed = parseDigestDetailed(result.text);
+    report.returned = parsed.claims.length;
+    const claims = applyDigest(parsed.claims, items);
     if (claims.length === 0) {
-      report.error = 'Model returned no citable claims.';
+      report.error =
+        parsed.reason ??
+        (parsed.claims.length === 0
+          ? 'Model returned no claims.'
+          : `All ${parsed.claims.length} returned claim(s) lacked a valid citation.`);
       return report;
     }
     report.digest = { model: config.model, generatedAt: now, claims };

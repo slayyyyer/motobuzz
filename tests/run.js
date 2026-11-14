@@ -11,7 +11,7 @@ import { parseFeed, parseDate } from '../src/adapters/feed.js';
 import { extractChannelVideos, videosFromFeed } from '../src/adapters/youtube.js';
 import { buildAtomFeed } from '../src/engine/feed.js';
 import { saveDiagnostics } from '../src/engine/diagnostics.js';
-import { applyDigest, generateDigest, parseDigest } from '../src/engine/digest.js';
+import { applyDigest, generateDigest, parseDigest, parseDigestDetailed } from '../src/engine/digest.js';
 import { coverageNoteText } from '../src/app/render.js';
 import { buildSourceRows, dedupeRecords, retainPrevious } from '../src/engine/pipeline.js';
 import {
@@ -330,12 +330,30 @@ test('a digest keeps only claims that cite records from the build', () => {
   assert.deepEqual(claims[1].recordIds, ['a', 'b']);
 });
 
-test('digest JSON is read from an envelope or a code fence', () => {
+test('digest JSON is read from an envelope, a code fence, or a short lead-in', () => {
   const envelope = parseDigest('{"claims":[{"text":"A claim here.","recordIds":["a"]}]}');
   assert.equal(envelope.length, 1);
   const fenced = parseDigest('```json\n[{"text":"A claim here.","recordIds":["a"]}]\n```');
   assert.equal(fenced.length, 1);
-  assert.deepEqual(parseDigest('not json at all'), []);
+  const prefixed = parseDigest('Here is the JSON:\n{"claims":[{"text":"A claim here.","recordIds":["a"]}]}');
+  assert.equal(prefixed.length, 1);
+  const broken = parseDigestDetailed('not json at all');
+  assert.deepEqual(broken.claims, []);
+  assert.match(broken.reason, /not JSON/i);
+});
+
+test('a digest accepts the record_ids spelling and a single cited id', () => {
+  const records = [{ id: 'a' }, { id: 'b' }];
+  const claims = applyDigest(
+    [
+      { text: 'One claim citing the alternate field name.', record_ids: ['a'] },
+      { text: 'Another claim citing a single bare id.', recordIds: 'b' },
+    ],
+    records,
+  );
+  assert.equal(claims.length, 2);
+  assert.deepEqual(claims[0].recordIds, ['a']);
+  assert.deepEqual(claims[1].recordIds, ['b']);
 });
 
 test('no key means no digest, and a failing call leaves the score alone', async () => {
