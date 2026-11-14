@@ -6,7 +6,16 @@
  * No model is involved. Every rule is a word or phrase in config.js, so the same
  * headline always produces the same labels, and the page can explain itself.
  */
-import { MOTOCROSS_CONTEXT, MOTOCROSS_DOMAINS, MOTOCROSS_SOURCE_IDS, REGION_RULES, TOPICS, WATCHLIST } from '../config.js';
+import {
+  MOTOCROSS_CONTEXT,
+  MOTOCROSS_DOMAINS,
+  MOTOCROSS_ENTITY_CONTEXT,
+  MOTOCROSS_SOURCE_IDS,
+  NON_MOTOCROSS_PRODUCTS,
+  REGION_RULES,
+  TOPICS,
+  WATCHLIST,
+} from '../config.js';
 import { normalizeForMatch } from '../lib/text.js';
 
 const PHRASE_GAP = '[\\s\\W_]+';
@@ -40,8 +49,10 @@ export function buildMatchers() {
   };
 
   const context = MOTOCROSS_CONTEXT.map(compileAlias).filter(Boolean);
+  const entityContext = MOTOCROSS_ENTITY_CONTEXT.map(compileAlias).filter(Boolean);
+  const nonMotocrossProducts = NON_MOTOCROSS_PRODUCTS.map(compileAlias).filter(Boolean);
 
-  return { entities, topics, region, context };
+  return { entities, topics, region, context, entityContext, nonMotocrossProducts };
 }
 
 const MATCHERS = buildMatchers();
@@ -50,6 +61,18 @@ const MATCHERS = buildMatchers();
 export function hasMotocrossContext(text) {
   const normalized = normalizeForMatch(text || '');
   return MATCHERS.context.some((pattern) => pattern.test(normalized));
+}
+
+/** True when the text contains an MX-specific term for a gated brand or team. */
+export function hasMotocrossEntityContext(text) {
+  const normalized = normalizeForMatch(text || '');
+  return MATCHERS.entityContext.some((pattern) => pattern.test(normalized));
+}
+
+/** True when the text names a clearly non-motocross product or category. */
+export function hasNonMotocrossProduct(text) {
+  const normalized = normalizeForMatch(text || '');
+  return MATCHERS.nonMotocrossProducts.some((pattern) => pattern.test(normalized));
 }
 
 const DOMAIN_SET = new Set(MOTOCROSS_DOMAINS);
@@ -96,12 +119,17 @@ export function classify(record) {
 
   const entityIds = [];
   // Computed once: a common-name rider needs a motocross term somewhere in the
-  // story, or a publisher whose name already places it in motocross.
-  const motocrossContext = hasMotocrossContext(fullText) || isMotocrossOutlet(record);
+  // story, or a publisher whose name already places it in motocross. Brands and
+  // teams use the stricter tier and are vetoed by non-MX products.
+  const outlet = isMotocrossOutlet(record);
+  const motocrossContext = hasMotocrossContext(fullText) || outlet;
+  const brandTeamContext =
+    (hasMotocrossEntityContext(fullText) || outlet) && !hasNonMotocrossProduct(fullText);
   for (const entity of MATCHERS.entities) {
     // Titles carry the weight; a name buried in a long summary is a weak mention.
     const hit = entity.patterns.some((pattern) => pattern.test(titleText) || pattern.test(fullText));
-    if (hit && (!entity.contextRequired || motocrossContext)) entityIds.push(entity.id);
+    const context = entity.kind === 'brand' || entity.kind === 'team' ? brandTeamContext : motocrossContext;
+    if (hit && (!entity.contextRequired || context)) entityIds.push(entity.id);
   }
 
   const scored = [];

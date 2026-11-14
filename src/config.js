@@ -299,6 +299,111 @@ export const MOTOCROSS_CONTEXT = Object.freeze([
   ]),
 ]);
 
+/**
+ * The stricter context tier for gated brands and teams. A manufacturer can be
+ * an MX brand and still make cars, bicycles, marine engines, or generators, so
+ * generic words such as "bike", "racing", and "outdoor" are not enough here.
+ * Keep only explicit MX series, venues, and race-specific vocabulary, or a
+ * known MX outlet/source.
+ */
+export const MOTOCROSS_ENTITY_CONTEXT = Object.freeze([
+  ...new Set([
+    'motocross',
+    'supercross',
+    'supermotocross',
+    'smx',
+    'mxgp',
+    'mx2',
+    'mx1',
+    'mxon',
+    'arenacross',
+    'ausx',
+    'wsx',
+    'dirt bike',
+    'dirtbike',
+    'motocross track',
+    'supercross track',
+    'holeshot',
+    'gate drop',
+    ...REGION_RULES.us,
+    ...REGION_RULES.world.filter((term) => !['fim', 'gp of ', 'grand prix'].includes(term)),
+    ...SERIES.flatMap((series) => series.aliases || [series.name]),
+  ]),
+]);
+
+/**
+ * Product and category terms that veto a gated brand or team even when a
+ * headline contains a generic MX-sounding word. These are deliberately about
+ * the product, not the manufacturer: a Civic review is still a car story even
+ * if it says "motocross-inspired".
+ */
+export const NON_MOTOCROSS_PRODUCTS = Object.freeze([
+  'car review',
+  'sedan',
+  'suv',
+  'crossover',
+  'hatchback',
+  'coupe',
+  'minivan',
+  'pickup truck',
+  'civic',
+  'accord',
+  'cr-v',
+  'hr-v',
+  'pilot',
+  'passport',
+  'odyssey',
+  'ridgeline',
+  'integra',
+  'nsx',
+  'type r',
+  'africa twin',
+  'gold wing',
+  'goldwing',
+  'super cub',
+  'pcx',
+  'grom',
+  'monkey',
+  'dax',
+  'rebel',
+  'cbr',
+  'forza',
+  'navi',
+  'adventure bike',
+  'adventure bikes',
+  'e-bike',
+  'ebike',
+  'electric-assist',
+  'mountain bike',
+  'mountain bikes',
+  'mtb',
+  'bicycle',
+  'bicycles',
+  'road bike',
+  'gravel bike',
+  'outboard',
+  'marine',
+  'jet ski',
+  'waverunner',
+  'seadoo',
+  'personal watercraft',
+  'atv',
+  'utv',
+  'side-by-side',
+  'side by side',
+  'four-wheeler',
+  'four wheeler',
+  'quad bike',
+  'generator',
+  'lawn mower',
+  'mower',
+  'snowblower',
+  'hondajet',
+  'aircraft',
+  'piano',
+  'audio equipment',
+]);
+
 export const WATCHLIST = Object.freeze([
   ...RIDERS.map((entry) => ({ ...entry, kind: 'rider' })),
   ...BRANDS.map((entry) => ({ ...entry, kind: 'brand' })),

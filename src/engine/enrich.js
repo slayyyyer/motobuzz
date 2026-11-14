@@ -18,7 +18,12 @@
  *   keyword labels exactly as they were. The build never depends on it.
  */
 import { ENTITY_BY_ID, TOPICS } from '../config.js';
-import { hasMotocrossContext, isMotocrossOutlet } from './classify.js';
+import {
+  hasMotocrossContext,
+  hasMotocrossEntityContext,
+  hasNonMotocrossProduct,
+  isMotocrossOutlet,
+} from './classify.js';
 
 const DEFAULT_BASE = 'https://api.z.ai/api/paas/v4';
 const DEFAULT_MODEL = 'glm-4.5-flash';
@@ -104,13 +109,20 @@ export function applyEnrichment(records, results) {
       .filter((id) => typeof id === 'string' && TOPIC_SET.has(id))
       .slice(0, MAX_TOPICS);
     const storyText = `${record.title || ''} ${record.summary || ''}`;
-    const motocrossContext = hasMotocrossContext(storyText) || isMotocrossOutlet(record);
+    const outlet = isMotocrossOutlet(record);
+    const motocrossContext = hasMotocrossContext(storyText) || outlet;
+    const brandTeamContext =
+      (hasMotocrossEntityContext(storyText) || outlet) && !hasNonMotocrossProduct(storyText);
+    const contextFor = (id) => {
+      const entry = ENTITY_BY_ID[id];
+      return entry?.kind === 'brand' || entry?.kind === 'team' ? brandTeamContext : motocrossContext;
+    };
     const entities = (Array.isArray(result.entities) ? result.entities : [])
       .filter(
         (id) =>
           typeof id === 'string' &&
           ENTITY_SET.has(id) &&
-          (!ENTITY_BY_ID[id]?.contextRequired || motocrossContext),
+          (!ENTITY_BY_ID[id]?.contextRequired || contextFor(id)),
       )
       .slice(0, MAX_ENTITIES);
 

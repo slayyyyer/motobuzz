@@ -318,9 +318,12 @@ as `Jalek Swoll` is unaffected. `npm run riders:audit` repeats the check against
 headlines for every gated rider, brand, and team, and exits non-zero if a non-motocross
 mention still counts or a motocross mention is dropped.
 
-Brands and teams carry the same `contextRequired` flag. A manufacturer name is not itself
-context, because Honda also makes cars; “2027 Honda Civic review” must not count as motocross.
-The brand only appears when the story also carries a motocross term or comes from an MX outlet.
+Brands and teams carry the same `contextRequired` flag, but use a stricter MX-only context tier:
+explicit series, venues, dirt-bike vocabulary, or a known MX outlet. Generic words such as
+`bike`, `racing`, and `outdoor` do not qualify, because Honda also makes cars, bicycles, and
+marine engines. A non-MX product term — Civic, Africa Twin, e-MTB, ATV, outboard — vetoes the
+hit even when the headline says "motocross-inspired". The brand or team therefore appears only
+when the story is genuinely MX or comes from an MX outlet.
 
 **Region.** American-series words (venues, `supercross`, `ama`, `motocross nationals`) against
 world-championship words (`mxgp`, `fim`, `mxon`, and European venues). Both present is `mixed`

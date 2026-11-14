@@ -89,9 +89,10 @@ The score uses a 24-hour window. The cache retains up to 72 hours for browsing, 
   are distinctive; a bare "Cooper" or "Martin" is never counted, so one rider cannot inherit another's buzz. A rider
   whose full name is shared with someone else can be marked `contextRequired`, which makes a motocross term in the
   title or summary, or an outlet whose domain or configured source id is a known motocross publication,
-  mandatory before the name counts. Brands and teams use the same gate: a car review mentioning Honda is not
-  counted as motocross. `npm run riders:audit` checks recent headlines for gated riders, brands, and teams; it fails
-  when a non-MX mention still counts or an MX mention is dropped.
+  mandatory before the name counts. Brands and teams use a stricter MX-only tier: generic words such as "bike" and
+  "racing" are not enough, and product terms such as Civic, Africa Twin, or e-MTB veto the hit, so a car review
+  mentioning Honda is not counted as motocross. `npm run riders:audit` checks recent headlines for gated riders,
+  brands, and teams; it fails when a non-MX mention still counts or an MX mention is dropped.
 - A region read: American series versus world championship, from venue and series words.
 
 Everything lives in [`src/config.js`](src/config.js). Topics and names are deterministic lists. The one model-written

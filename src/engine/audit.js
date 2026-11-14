@@ -6,7 +6,13 @@
  * dropped from a story that clearly is motocross. Keeping the decision here,
  * separate from the network runner, lets both cases be tested directly.
  */
-import { classify, hasMotocrossContext, isMotocrossOutlet } from './classify.js';
+import {
+  classify,
+  hasMotocrossContext,
+  hasMotocrossEntityContext,
+  hasNonMotocrossProduct,
+  isMotocrossOutlet,
+} from './classify.js';
 import { normalizeForMatch } from '../lib/text.js';
 
 /** Normalized aliases for a watchlist entry. */
@@ -36,9 +42,13 @@ export function matchesName(title, target) {
 export function inspectRecord(record, target, { labels, hasContext } = {}) {
   if (!matchesName(record?.title, target)) return null;
 
+  const storyText = `${record?.title || ''} ${record?.summary || ''}`;
+  const outlet = isMotocrossOutlet(record);
   const context =
     hasContext ??
-    (hasMotocrossContext(`${record?.title || ''} ${record?.summary || ''}`) || isMotocrossOutlet(record));
+    (target.kind === 'brand' || target.kind === 'team'
+      ? (hasMotocrossEntityContext(storyText) || outlet) && !hasNonMotocrossProduct(storyText)
+      : hasMotocrossContext(storyText) || outlet);
   const classified = labels ?? classify(record);
   const counted = Array.isArray(classified?.entities) && classified.entities.includes(target.id);
 

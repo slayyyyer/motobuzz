@@ -550,6 +550,19 @@ test('brands and teams need motocross context', () => {
   assert.ok(!carReview.entities.includes('honda'));
   assert.ok(!carReview.entities.includes('honda-hrc'));
 
+  const electricMtb = classify({
+    title: 'Honda unveils its first high-end electric-assist mountain bike, the RN0',
+    summary: null,
+  });
+  assert.ok(!electricMtb.entities.includes('honda'));
+
+  // A generic context word cannot rescue a car story when the product is explicit.
+  const carAtMotocross = classify({
+    title: 'Honda Civic Type R review: a motocross-inspired car',
+    summary: null,
+  });
+  assert.ok(!carAtMotocross.entities.includes('honda'));
+
   const energyDrink = classify({ title: 'Red Bull KTM launches a new energy drink', summary: null });
   assert.ok(!energyDrink.entities.includes('red-bull-ktm'));
   assert.ok(!energyDrink.entities.includes('ktm'));
@@ -572,6 +585,16 @@ test('the context audit catches non-MX brand hits and dropped MX brand/team stor
   assert.equal(inspectRecord(car, honda).status, 'dropped');
   assert.equal(
     inspectRecord(car, honda, { labels: { entities: ['honda'] }, hasContext: false }).status,
+    'non-mx-counted',
+  );
+
+  const carWithMotocross = {
+    title: 'Honda Civic Type R review: a motocross-inspired car',
+    summary: null,
+  };
+  assert.equal(inspectRecord(carWithMotocross, honda).status, 'dropped');
+  assert.equal(
+    inspectRecord(carWithMotocross, honda, { labels: { entities: ['honda'] } }).status,
     'non-mx-counted',
   );
 
