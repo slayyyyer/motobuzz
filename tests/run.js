@@ -339,7 +339,16 @@ test('digest JSON is read from an envelope, a code fence, or a short lead-in', (
   assert.equal(prefixed.length, 1);
   const broken = parseDigestDetailed('not json at all');
   assert.deepEqual(broken.claims, []);
-  assert.match(broken.reason, /not JSON/i);
+  assert.match(broken.reason, /neither JSON nor cited lines/i);
+});
+
+test('a digest is read from claim lines when the provider ignores JSON mode', () => {
+  const parsed = parseDigestDetailed('Ken Roczen has extended with Suzuki. || a, b\nAnother headline, in plain words. || c');
+  assert.equal(parsed.claims.length, 2);
+  assert.deepEqual(parsed.claims[0].recordIds, ['a', 'b']);
+  assert.equal(parsed.reason, null);
+  const bullets = parseDigestDetailed('- A claim with a bullet. || a\n2. A numbered claim. || b');
+  assert.deepEqual(bullets.claims.map((claim) => claim.text), ['A claim with a bullet.', 'A numbered claim.']);
 });
 
 test('a digest accepts the record_ids spelling and a single cited id', () => {

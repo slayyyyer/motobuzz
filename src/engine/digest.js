@@ -28,15 +28,17 @@ const TIMEOUT_MS = 60_000;
 function systemPrompt() {
   return [
     'You write a short, factual digest of motocross news from a fixed list of records.',
-    'Return ONLY JSON: {"claims":[{"text":"<one sentence>","recordIds":["<record id>"]}]}',
+    'Return at most 4 lines, each exactly in this form:',
+    '<one-sentence claim> || <record id>,<record id>',
     'Rules:',
-    '- 1 to 4 claims, each at most 240 characters.',
+    '- 1 to 4 lines, each at most 240 characters before the separator.',
+    '- Use the literal separator || between the claim and its record ids.',
     '- Every claim must be directly supported by the titles of the records it cites. Restating one record title in plain words is a valid claim.',
-    '- recordIds must be ids from the given records. Never invent an id, name or fact.',
+    '- The ids must come from the given records. Never invent an id, name or fact.',
     '- Do not state a date, time, number, quote, injury, signing, result or cause that is not in the cited titles.',
     '- Do not repeat a claim. No hype, no speculation, no advice.',
-    '- Return {"claims":[]} only if no title is clear enough to paraphrase.',
-    'No prose, no code fences.',
+    '- Return nothing at all only if no title is clear enough to paraphrase.',
+    'No JSON, no bullets, no numbering, no preamble, no code fences.',
   ].join('\n');
 }
 
@@ -75,13 +77,34 @@ export function parseDigestDetailed(text) {
     } catch {
       continue;
     }
+    if (typeof parsed === 'string') continue;
     const claims = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.claims) ? parsed.claims : [];
-    return {
-      claims: claims.filter((claim) => claim && typeof claim === 'object'),
-      reason: null,
-    };
+    if (claims.length > 0) {
+      return {
+        claims: claims.filter((claim) => claim && typeof claim === 'object'),
+        reason: null,
+      };
+    }
   }
-  return { claims: [], reason: 'Response was not JSON.' };
+
+  // The provider may ignore JSON mode. Accept the line format as well.
+  const claims = trimmed
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').trim())
+    .filter((line) => line.includes('||'))
+    .map((line) => {
+      const [text, cited] = line.split('||');
+      const recordIds = cited
+        .split(/[,\s]+/)
+        .map((id) => id.replace(/[\[\]"'`]/g, '').trim())
+        .filter(Boolean);
+      return { text: text.trim(), recordIds };
+    });
+
+  return {
+    claims,
+    reason: claims.length === 0 ? 'Response was neither JSON nor cited lines.' : null,
+  };
 }
 
 export function parseDigest(text) {
@@ -126,7 +149,6 @@ async function postDigest({ config, items, fetchImpl, signal }) {
     model: config.model,
     temperature: 0,
     stream: false,
-    response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: systemPrompt() },
       { role: 'user', content: JSON.stringify({ records: items }) },

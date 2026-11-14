@@ -329,7 +329,9 @@ measurement. It runs once per build, after scoring, over at most 24 scored recor
 only each record's `id`, `title`, `publisher`, `topics`, and `entities` — no summary field and no
 article body. The contract:
 
-- 2–4 claims, each at most 240 characters, returned as JSON with a `recordIds` array.
+- 1–4 claims, each at most 240 characters. The model is asked for one claim per line as
+  `claim || recordId`; a JSON `claims` array is accepted too, because a provider may ignore JSON
+  mode. Either way every citation is checked against the input.
 - Every cited id must exist in the input. A claim citing an unknown id, or no id at all, is
   dropped; a claim too short, too long, or duplicated is dropped too.
 - No retry and no substitute request. No key, timeout, HTTP error, or malformed response leaves
@@ -541,7 +543,7 @@ one of them is about the sport.
 
 ## 13. Tests and reproducibility
 
-`npm test` runs 69 tests on Node's built-in assertions, with no test framework and no
+`npm test` runs 70 tests on Node's built-in assertions, with no test framework and no
 dependencies: text decoding and normalization, RSS and Atom parsing, malformed-versus-empty
 diagnostics, the YouTube channel feed and page extractor against fixtures, classifier and alias
 safety (including the surnames that must *not* match), decay, momentum, saturation, bucket
