@@ -315,7 +315,8 @@ the real publisher hostname or a configured source id, not by the publisher's di
 outlet rule matters for interviews such as “Five Questions: Jorge Prado” on MotoOnline, where
 the headline contains no keyword but the outlet itself is unambiguous. A distinctive name such
 as `Jalek Swoll` is unaffected. `npm run riders:audit` repeats the check against recent
-headlines and exits non-zero if a motocross outlet's story is being dropped.
+headlines for every gated rider, brand, and team, and exits non-zero if a non-motocross
+mention still counts or a motocross mention is dropped.
 
 Brands and teams carry the same `contextRequired` flag. A manufacturer name is not itself
 context, because Honda also makes cars; “2027 Honda Civic review” must not count as motocross.
@@ -565,7 +566,7 @@ one of them is about the sport.
 
 ## 13. Tests and reproducibility
 
-`npm test` runs 77 tests on Node's built-in assertions, with no test framework and no
+`npm test` runs 78 tests on Node's built-in assertions, with no test framework and no
 dependencies: text decoding and normalization, RSS and Atom parsing, malformed-versus-empty
 diagnostics, the YouTube channel feed and page extractor against fixtures, classifier and alias
 safety (including the surnames that must *not* match), decay, momentum, saturation, bucket
@@ -582,7 +583,7 @@ npm run cache:local                               # build through the relay
 node scripts/build-buzz-cache.js --out /tmp/c.json # build directly, no relay
 npm run calibrate                                 # score distribution of stored caches
 npm run watchlist:audit                           # quiet riders and unwatched names
-npm run riders:audit                              # gated riders vs recent headlines
+npm run riders:audit                              # gated riders, brands, and teams
 npm run survey:articles                           # article text each outlet serves
 node scripts/build-feed.js data/buzz-cache.json dist/feed.xml  # the Atom output
 ```
@@ -602,7 +603,8 @@ scripts/build-feed.js         Atom feed from the cache
 scripts/calibrate.js          score distribution and recalibration suggestion
 scripts/watchlist-audit.js    quiet riders and unwatched names
 scripts/check-article-text.js read-only article-text survey (docs/article-readability.md)
-scripts/audit-rider-context.js repeatable context-gated rider audit
+scripts/audit-rider-context.js repeatable gated-entity audit
+src/engine/audit.js            pure false-positive / near-miss decisions for that audit
 proxy/server.js               dev server + allowlisted relay
 proxy/allowlist.js            every upstream the relay may reach
 src/config.js                 sources, watchlist, topics, decay, thresholds

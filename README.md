@@ -90,7 +90,8 @@ The score uses a 24-hour window. The cache retains up to 72 hours for browsing, 
   whose full name is shared with someone else can be marked `contextRequired`, which makes a motocross term in the
   title or summary, or an outlet whose domain or configured source id is a known motocross publication,
   mandatory before the name counts. Brands and teams use the same gate: a car review mentioning Honda is not
-  counted as motocross. `npm run riders:audit` checks recent headlines and flags an MX story that is being dropped.
+  counted as motocross. `npm run riders:audit` checks recent headlines for gated riders, brands, and teams; it fails
+  when a non-MX mention still counts or an MX mention is dropped.
 - A region read: American series versus world championship, from venue and series words.
 
 Everything lives in [`src/config.js`](src/config.js). Topics and names are deterministic lists. The one model-written
@@ -166,7 +167,7 @@ MOTOBUZZ_BRIDGE_URL=https://your-bridge.example node scripts/build-buzz-cache.js
 MOTOBUZZ_RELAY=http://127.0.0.1:8080 node scripts/build-buzz-cache.js
 npm run calibrate                                  # score distribution of stored caches
 npm run watchlist:audit                            # quiet riders and unwatched names
-npm run riders:audit -- --days 90                  # gated riders vs recent headlines
+npm run riders:audit -- --days 90                  # gated riders, brands, and teams
 node scripts/build-feed.js data/buzz-cache.json dist/feed.xml
 PORT=8099 HOST=0.0.0.0 npm start
 ```
@@ -274,7 +275,8 @@ proxy/allowlist.js          every upstream the relay may reach
 scripts/build-buzz-cache.js the hourly build
 scripts/build-feed.js       Atom feed written from the cache into dist/
 scripts/check-article-text.js  read-only survey of article text served to the build
-scripts/audit-rider-context.js repeatable context-gated rider audit
+scripts/audit-rider-context.js repeatable gated-entity audit
+src/engine/audit.js         pure false-positive / near-miss decisions for that audit
 scripts/calibrate.js        score-distribution report for the meter
 scripts/watchlist-audit.js  quiet riders and unwatched names in a cache
 docs/paper.md               the paper: build system, adapters, classification, scoring
@@ -299,7 +301,7 @@ tests/run.js                the suite
 npm test
 ```
 
-77 tests using only Node's built-in assertions: text decoding, feed and Atom parsing, malformed-versus-empty
+78 tests using only Node's built-in assertions: text decoding, feed and Atom parsing, malformed-versus-empty
 diagnostics, the YouTube channel-feed reader and page extractor against fixtures, classifier and alias safety,
 decay and momentum, saturation, bucket accounting, cache validation, the digest's citation rules and fail-open path,
 the relay allowlist, continuity and dedupe, deprecated-source filtering, source status, the thin-build note,

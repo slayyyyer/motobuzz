@@ -24,6 +24,7 @@ import {
 import { isJunkTitle } from '../src/adapters/news.js';
 import { matchUpstream } from '../proxy/allowlist.js';
 import { classify, isMotocrossOutlet } from '../src/engine/classify.js';
+import { inspectRecord } from '../src/engine/audit.js';
 import {
   buildSnapshot,
   engagementFactor,
@@ -563,6 +564,24 @@ test('brands and teams need motocross context', () => {
   const team = classify({ title: 'Red Bull KTM reveals its 2027 Supercross roster', summary: null });
   assert.ok(team.entities.includes('red-bull-ktm'));
   assert.ok(team.entities.includes('ktm'));
+});
+
+test('the context audit catches non-MX brand hits and dropped MX brand/team stories', () => {
+  const honda = { id: 'honda', name: 'Honda', aliases: ['Honda'], kind: 'brand' };
+  const car = { title: '2027 Honda Civic review: a practical sedan', summary: null };
+  assert.equal(inspectRecord(car, honda).status, 'dropped');
+  assert.equal(
+    inspectRecord(car, honda, { labels: { entities: ['honda'] }, hasContext: false }).status,
+    'non-mx-counted',
+  );
+
+  const hondaHrc = { id: 'honda-hrc', name: 'Honda HRC', aliases: ['Honda HRC'], kind: 'team' };
+  const motocross = { title: 'Honda HRC wins the Supercross main event', summary: null };
+  assert.equal(inspectRecord(motocross, hondaHrc).status, 'kept');
+  assert.equal(
+    inspectRecord(motocross, hondaHrc, { labels: { entities: [] }, hasContext: true }).status,
+    'near-miss',
+  );
 });
 
 test('legitimate MX headlines survive without a context keyword in the title', () => {
