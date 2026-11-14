@@ -518,11 +518,16 @@ test('ambiguous surnames are only matched as full names', () => {
 test('common-name riders require motocross context', () => {
   const book = classify({
     title: 'Pierce Brown prepares to wrap up his Red Rising series and say goodbye to his beloved hero',
+    publisher: 'The Bookseller',
     summary: null,
   });
   assert.ok(!book.entities.includes('pierce-brown'));
 
-  const football = classify({ title: 'Pierce Brown 2026 Stats per Game - NCAAF', summary: null });
+  const football = classify({
+    title: 'Pierce Brown 2026 Stats per Game - NCAAF',
+    publisher: 'ESPN',
+    summary: null,
+  });
   assert.ok(!football.entities.includes('pierce-brown'));
 
   const race = classify({ title: 'Pierce Brown returns to racing at Anaheim 1 Supercross', summary: null });
@@ -537,6 +542,28 @@ test('common-name riders require motocross context', () => {
   // The gate is for common names only: a distinctive rider still counts without a context word.
   const distinctive = classify({ title: 'Jalek Swoll will not retire', summary: null });
   assert.ok(distinctive.entities.includes('jalek-swoll'));
+});
+
+test('legitimate MX headlines survive without a context keyword in the title', () => {
+  const fixtures = [
+    { id: 'jorge-prado', title: 'Five Questions: Jorge Prado', publisher: 'MotoOnline.com' },
+    {
+      id: 'jason-anderson',
+      title: 'Jason Anderson is back: The world champion is attacking again',
+      publisher: 'MXNEWS-Online',
+    },
+    { id: 'jason-anderson', title: 'Jason Anderson Back on the Bike After Temporary Break', publisher: 'MX Vice' },
+    { id: 'dean-wilson', title: 'Dean Wilson Injured in Practice Crash', publisher: 'Vurbmoto' },
+    {
+      id: 'jorge-prado',
+      title: 'Haiden Deegan wins Ridgedale 450 Moto 1, Jorge Prado finishes fifth',
+      publisher: 'NBC Sports',
+    },
+  ];
+  for (const fixture of fixtures) {
+    const labels = classify({ title: fixture.title, publisher: fixture.publisher, summary: null });
+    assert.ok(labels.entities.includes(fixture.id), `${fixture.title} should still count for ${fixture.id}`);
+  }
 });
 
 test('the LLM pass cannot attach a common-name rider without motocross context', () => {

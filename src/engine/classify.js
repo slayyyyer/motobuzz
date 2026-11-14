@@ -6,7 +6,7 @@
  * No model is involved. Every rule is a word or phrase in config.js, so the same
  * headline always produces the same labels, and the page can explain itself.
  */
-import { MOTOCROSS_CONTEXT, REGION_RULES, TOPICS, WATCHLIST } from '../config.js';
+import { MOTOCROSS_CONTEXT, MOTOCROSS_PUBLISHERS, REGION_RULES, TOPICS, WATCHLIST } from '../config.js';
 import { normalizeForMatch } from '../lib/text.js';
 
 const PHRASE_GAP = '[\\s\\W_]+';
@@ -52,6 +52,14 @@ export function hasMotocrossContext(text) {
   return MATCHERS.context.some((pattern) => pattern.test(normalized));
 }
 
+const PUBLISHER_PATTERNS = MOTOCROSS_PUBLISHERS.map((name) => normalizeForMatch(name)).filter(Boolean);
+
+/** True when the outlet itself is a motocross publication. */
+export function isMotocrossPublisher(publisher) {
+  const normalized = normalizeForMatch(publisher || '');
+  return Boolean(normalized) && PUBLISHER_PATTERNS.some((name) => normalized.includes(name));
+}
+
 function keywordHits(text, keyword) {
   if (keyword.includes(' ')) return text.includes(keyword) ? 1 : 0;
   // Single words match as whole tokens so 'sign' does not fire inside 'design'.
@@ -60,7 +68,7 @@ function keywordHits(text, keyword) {
 }
 
 /**
- * @param {{title: string, summary?: string|null}} record
+ * @param {{title: string, summary?: string|null, publisher?: string|null}} record
  * @returns {{topics: string[], entities: string[], region: 'us'|'world'|'mixed'|null}}
  */
 export function classify(record) {
@@ -68,8 +76,9 @@ export function classify(record) {
   const fullText = normalizeForMatch(`${record?.title || ''} ${record?.summary || ''}`);
 
   const entityIds = [];
-  // Computed once: a common-name rider needs a motocross term somewhere in the story.
-  const motocrossContext = hasMotocrossContext(fullText);
+  // Computed once: a common-name rider needs a motocross term somewhere in the
+  // story, or a publisher whose name already places it in motocross.
+  const motocrossContext = hasMotocrossContext(fullText) || isMotocrossPublisher(record?.publisher);
   for (const entity of MATCHERS.entities) {
     // Titles carry the weight; a name buried in a long summary is a weak mention.
     const hit = entity.patterns.some((pattern) => pattern.test(titleText) || pattern.test(fullText));

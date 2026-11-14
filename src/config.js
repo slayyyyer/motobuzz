@@ -274,6 +274,13 @@ export const MOTOCROSS_CONTEXT = Object.freeze([
     'wsx',
     'dirt bike',
     'dirtbike',
+    'moto',
+    'motos',
+    'mx',
+    'bike',
+    'bikes',
+    'outdoor',
+    'outdoors',
     'holeshot',
     'gate drop',
     'main event',
@@ -290,6 +297,38 @@ export const MOTOCROSS_CONTEXT = Object.freeze([
     ...BRANDS.map((brand) => brand.name),
     ...SERIES.flatMap((series) => series.aliases || [series.name]),
   ]),
+]);
+
+/**
+ * Outlets whose own name is enough to place a story in motocross. They are used
+ * only for context-gated riders, so an interview titled "Five Questions: Jorge
+ * Prado" on MotoOnline is kept even though the headline itself has no keyword.
+ */
+export const MOTOCROSS_PUBLISHERS = Object.freeze([
+  'Racer X',
+  'Racer X Illustrated',
+  'RACER - Racing News',
+  'Transworld Motocross',
+  'Vurbmoto',
+  'MotoOnline',
+  'MX Vice',
+  'MXNEWS-Online',
+  'Cycle News',
+  'GateDrop.com',
+  'Motocross Action',
+  'Dirt Bike',
+  'Vital MX',
+  'PulpMX',
+  'Supercross Live',
+  'Monster Energy Supercross',
+  'SuperMotocross',
+  'MXGP',
+  'MX1Onboard',
+  'Bike Rider Magazine',
+  'Dirt Hub',
+  'Fullnoise Motorcycle News',
+  'FIM',
+  'FIM Europe',
 ]);
 
 export const WATCHLIST = Object.freeze([
