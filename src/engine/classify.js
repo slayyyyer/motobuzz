@@ -6,7 +6,7 @@
  * No model is involved. Every rule is a word or phrase in config.js, so the same
  * headline always produces the same labels, and the page can explain itself.
  */
-import { MOTOCROSS_CONTEXT, MOTOCROSS_PUBLISHERS, REGION_RULES, TOPICS, WATCHLIST } from '../config.js';
+import { MOTOCROSS_CONTEXT, MOTOCROSS_DOMAINS, MOTOCROSS_SOURCE_IDS, REGION_RULES, TOPICS, WATCHLIST } from '../config.js';
 import { normalizeForMatch } from '../lib/text.js';
 
 const PHRASE_GAP = '[\\s\\W_]+';
@@ -52,12 +52,30 @@ export function hasMotocrossContext(text) {
   return MATCHERS.context.some((pattern) => pattern.test(normalized));
 }
 
-const PUBLISHER_PATTERNS = MOTOCROSS_PUBLISHERS.map((name) => normalizeForMatch(name)).filter(Boolean);
+const DOMAIN_SET = new Set(MOTOCROSS_DOMAINS);
+const SOURCE_ID_SET = new Set(MOTOCROSS_SOURCE_IDS);
 
-/** True when the outlet itself is a motocross publication. */
-export function isMotocrossPublisher(publisher) {
-  const normalized = normalizeForMatch(publisher || '');
-  return Boolean(normalized) && PUBLISHER_PATTERNS.some((name) => normalized.includes(name));
+function hostOf(value) {
+  if (!value) return '';
+  try {
+    return new URL(value).hostname.toLowerCase().replace(/^www\./, '').replace(/\.$/, '');
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * True when the record comes from a known motocross outlet, identified by its
+ * configured source id or the real hostname behind its publisher URL. Display
+ * names are deliberately not used.
+ */
+export function isMotocrossOutlet(source) {
+  if (typeof source === 'string') return SOURCE_ID_SET.has(source);
+  if (!source || typeof source !== 'object') return false;
+  if (source.sourceId && SOURCE_ID_SET.has(source.sourceId)) return true;
+  const host = hostOf(source.publisherUrl) || hostOf(source.url);
+  if (!host) return false;
+  return [...DOMAIN_SET].some((domain) => host === domain || host.endsWith(`.${domain}`));
 }
 
 function keywordHits(text, keyword) {
@@ -68,7 +86,8 @@ function keywordHits(text, keyword) {
 }
 
 /**
- * @param {{title: string, summary?: string|null, publisher?: string|null}} record
+ * @param {{title: string, summary?: string|null, publisher?: string|null,
+ *   publisherUrl?: string|null, sourceId?: string|null, url?: string|null}} record
  * @returns {{topics: string[], entities: string[], region: 'us'|'world'|'mixed'|null}}
  */
 export function classify(record) {
@@ -78,7 +97,7 @@ export function classify(record) {
   const entityIds = [];
   // Computed once: a common-name rider needs a motocross term somewhere in the
   // story, or a publisher whose name already places it in motocross.
-  const motocrossContext = hasMotocrossContext(fullText) || isMotocrossPublisher(record?.publisher);
+  const motocrossContext = hasMotocrossContext(fullText) || isMotocrossOutlet(record);
   for (const entity of MATCHERS.entities) {
     // Titles carry the weight; a name buried in a long summary is a weak mention.
     const hit = entity.patterns.some((pattern) => pattern.test(titleText) || pattern.test(fullText));

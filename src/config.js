@@ -299,38 +299,6 @@ export const MOTOCROSS_CONTEXT = Object.freeze([
   ]),
 ]);
 
-/**
- * Outlets whose own name is enough to place a story in motocross. They are used
- * only for context-gated riders, so an interview titled "Five Questions: Jorge
- * Prado" on MotoOnline is kept even though the headline itself has no keyword.
- */
-export const MOTOCROSS_PUBLISHERS = Object.freeze([
-  'Racer X',
-  'Racer X Illustrated',
-  'RACER - Racing News',
-  'Transworld Motocross',
-  'Vurbmoto',
-  'MotoOnline',
-  'MX Vice',
-  'MXNEWS-Online',
-  'Cycle News',
-  'GateDrop.com',
-  'Motocross Action',
-  'Dirt Bike',
-  'Vital MX',
-  'PulpMX',
-  'Supercross Live',
-  'Monster Energy Supercross',
-  'SuperMotocross',
-  'MXGP',
-  'MX1Onboard',
-  'Bike Rider Magazine',
-  'Dirt Hub',
-  'Fullnoise Motorcycle News',
-  'FIM',
-  'FIM Europe',
-]);
-
 export const WATCHLIST = Object.freeze([
   ...RIDERS.map((entry) => ({ ...entry, kind: 'rider' })),
   ...BRANDS.map((entry) => ({ ...entry, kind: 'brand' })),
@@ -393,6 +361,58 @@ export const FEEDS = Object.freeze([
     homepage: 'https://vurbmoto.com/',
     url: 'https://vurbmoto.com/feed/',
   },
+]);
+
+const FEED_DOMAINS = FEEDS.map((feed) => {
+  try {
+    return new URL(feed.homepage).hostname.replace(/^www\./, '').toLowerCase();
+  } catch {
+    return null;
+  }
+}).filter(Boolean);
+
+/**
+ * Outlets whose own domain is enough to place a story in motocross. These are
+ * used only for context-gated riders, so an interview titled "Five Questions:
+ * Jorge Prado" on MotoOnline is kept even though the headline has no keyword.
+ * Matching is by hostname, not the publisher's display text, because a display
+ * name is easy to spoof and tends to change.
+ */
+export const MOTOCROSS_DOMAINS = Object.freeze([
+  ...new Set([
+    ...FEED_DOMAINS,
+    'motoonline.com',
+    'racerxonline.com',
+    'transworldmotocross.com',
+    'twmx.com',
+    'cyclenews.com',
+    'gatedrop.com',
+    'mxnews-online.com',
+    'mx1onboard.com',
+    'motocrossactionmag.com',
+    'dirtbikemagazine.com',
+    'vitalmx.com',
+    'racer.com',
+    'bikeridermagazine.co.nz',
+    'dirthub.co.uk',
+    'fullnoise.com.au',
+    'fim-live.com',
+    'fim-europe.com',
+  ]),
+]);
+
+/** Configured sources whose records are unambiguously motocross. */
+export const MOTOCROSS_SOURCE_IDS = Object.freeze([
+  ...FEEDS.map((feed) => feed.id),
+  'yt-supercrosslive',
+  'yt-supermotocross',
+  'yt-vitalmx',
+  'yt-motocrossaction',
+  'yt-dirtbikemag',
+  'yt-pulpmx',
+  'yt-gypsytales',
+  'yt-racerx',
+  'yt-whiskeythrottle',
 ]);
 
 /**

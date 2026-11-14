@@ -310,10 +310,12 @@ novelist, `Andrea Adamo` a designer, and `Justin Cooper` an actor; a full-name m
 would put their stories into rider heat. Those entries carry `contextRequired`, so the
 classifier and the optional labelling pass only accept the name when the title or summary
 also contains a motocross term — a configured series, governing body, venue, manufacturer, or
-race vocabulary — or the publisher is a known motocross outlet. The publisher rule matters for
-interviews such as “Five Questions: Jorge Prado” on MotoOnline, where the headline contains no
-keyword but the outlet itself is unambiguous. A distinctive name such as `Jalek Swoll` is
-unaffected.
+race vocabulary — or the outlet is a known motocross publication. Outlets are identified by
+the real publisher hostname or a configured source id, not by the publisher's display name. The
+outlet rule matters for interviews such as “Five Questions: Jorge Prado” on MotoOnline, where
+the headline contains no keyword but the outlet itself is unambiguous. A distinctive name such
+as `Jalek Swoll` is unaffected. `npm run riders:audit` repeats the check against recent
+headlines and exits non-zero if a motocross outlet's story is being dropped.
 
 **Region.** American-series words (venues, `supercross`, `ama`, `motocross nationals`) against
 world-championship words (`mxgp`, `fim`, `mxon`, and European venues). Both present is `mixed`
@@ -559,7 +561,7 @@ one of them is about the sport.
 
 ## 13. Tests and reproducibility
 
-`npm test` runs 75 tests on Node's built-in assertions, with no test framework and no
+`npm test` runs 76 tests on Node's built-in assertions, with no test framework and no
 dependencies: text decoding and normalization, RSS and Atom parsing, malformed-versus-empty
 diagnostics, the YouTube channel feed and page extractor against fixtures, classifier and alias
 safety (including the surnames that must *not* match), decay, momentum, saturation, bucket
@@ -576,6 +578,7 @@ npm run cache:local                               # build through the relay
 node scripts/build-buzz-cache.js --out /tmp/c.json # build directly, no relay
 npm run calibrate                                 # score distribution of stored caches
 npm run watchlist:audit                           # quiet riders and unwatched names
+npm run riders:audit                              # gated riders vs recent headlines
 npm run survey:articles                           # article text each outlet serves
 node scripts/build-feed.js data/buzz-cache.json dist/feed.xml  # the Atom output
 ```
@@ -595,6 +598,7 @@ scripts/build-feed.js         Atom feed from the cache
 scripts/calibrate.js          score distribution and recalibration suggestion
 scripts/watchlist-audit.js    quiet riders and unwatched names
 scripts/check-article-text.js read-only article-text survey (docs/article-readability.md)
+scripts/audit-rider-context.js repeatable context-gated rider audit
 proxy/server.js               dev server + allowlisted relay
 proxy/allowlist.js            every upstream the relay may reach
 src/config.js                 sources, watchlist, topics, decay, thresholds

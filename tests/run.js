@@ -23,7 +23,7 @@ import {
 } from '../src/engine/enrich.js';
 import { isJunkTitle } from '../src/adapters/news.js';
 import { matchUpstream } from '../proxy/allowlist.js';
-import { classify } from '../src/engine/classify.js';
+import { classify, isMotocrossOutlet } from '../src/engine/classify.js';
 import {
   buildSnapshot,
   engagementFactor,
@@ -518,14 +518,14 @@ test('ambiguous surnames are only matched as full names', () => {
 test('common-name riders require motocross context', () => {
   const book = classify({
     title: 'Pierce Brown prepares to wrap up his Red Rising series and say goodbye to his beloved hero',
-    publisher: 'The Bookseller',
+    publisherUrl: 'https://www.thebookseller.com/',
     summary: null,
   });
   assert.ok(!book.entities.includes('pierce-brown'));
 
   const football = classify({
     title: 'Pierce Brown 2026 Stats per Game - NCAAF',
-    publisher: 'ESPN',
+    publisherUrl: 'https://www.espn.com/',
     summary: null,
   });
   assert.ok(!football.entities.includes('pierce-brown'));
@@ -546,24 +546,36 @@ test('common-name riders require motocross context', () => {
 
 test('legitimate MX headlines survive without a context keyword in the title', () => {
   const fixtures = [
-    { id: 'jorge-prado', title: 'Five Questions: Jorge Prado', publisher: 'MotoOnline.com' },
+    { id: 'jorge-prado', title: 'Five Questions: Jorge Prado', publisherUrl: 'https://www.motoonline.com.au/' },
     {
       id: 'jason-anderson',
       title: 'Jason Anderson is back: The world champion is attacking again',
-      publisher: 'MXNEWS-Online',
+      publisherUrl: 'https://mxnews-online.com/',
     },
-    { id: 'jason-anderson', title: 'Jason Anderson Back on the Bike After Temporary Break', publisher: 'MX Vice' },
-    { id: 'dean-wilson', title: 'Dean Wilson Injured in Practice Crash', publisher: 'Vurbmoto' },
+    {
+      id: 'jason-anderson',
+      title: 'Jason Anderson Back on the Bike After Temporary Break',
+      publisherUrl: 'https://mxvice.com/',
+    },
+    { id: 'dean-wilson', title: 'Dean Wilson Injured in Practice Crash', publisherUrl: 'https://vurbmoto.com/' },
     {
       id: 'jorge-prado',
       title: 'Haiden Deegan wins Ridgedale 450 Moto 1, Jorge Prado finishes fifth',
-      publisher: 'NBC Sports',
+      publisherUrl: 'https://www.nbcsports.com/',
     },
   ];
   for (const fixture of fixtures) {
-    const labels = classify({ title: fixture.title, publisher: fixture.publisher, summary: null });
+    const labels = classify({ title: fixture.title, publisherUrl: fixture.publisherUrl, summary: null });
     assert.ok(labels.entities.includes(fixture.id), `${fixture.title} should still count for ${fixture.id}`);
   }
+});
+
+test('motocross context comes from a real domain or configured source id', () => {
+  assert.ok(isMotocrossOutlet({ sourceId: 'mxvice' }));
+  assert.ok(isMotocrossOutlet({ publisherUrl: 'https://www.racerxonline.com/' }));
+  assert.ok(isMotocrossOutlet({ url: 'https://www.motoonline.com.au/news/story' }));
+  assert.ok(!isMotocrossOutlet({ publisherUrl: 'https://www.thebookseller.com/' }));
+  assert.ok(!isMotocrossOutlet({ sourceId: 'gnews-riders-5' }));
 });
 
 test('the LLM pass cannot attach a common-name rider without motocross context', () => {

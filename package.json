@@ -16,6 +16,7 @@
     "calibrate": "node scripts/calibrate.js",
     "watchlist:audit": "node scripts/watchlist-audit.js",
     "feed": "node scripts/build-feed.js",
-    "survey:articles": "node scripts/check-article-text.js"
+    "survey:articles": "node scripts/check-article-text.js",
+    "riders:audit": "node scripts/audit-rider-context.js"
   }
 }
