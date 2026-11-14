@@ -127,11 +127,12 @@ a 60-second timeout and one retry on 429 or 5xx. `LLM_MODEL` and `LLM_API_BASE` 
 `NEWS_MODEL_API_KEY` are accepted in place of `LLM_API_KEY`.
 
 **The digest is one optional call, titles only, and out of the score.** After scoring, the same model settings may make
-one more request with up to 24 records, giving it only each record's id, title, publisher, topics, and entities — never
-a summary or an article body. It must return 1–4 short claims, one per line as `claim || recordId`, each citing ids
-from that list (JSON is also accepted). Claims
+one more request with up to 48 records, giving it only each record's id, title, publisher, topics, and entities — never
+a summary or an article body. Records covering the same event are grouped first and the groups are ranked by their
+combined weight, so the model gets stories rather than a flat list. It must return 1–4 short claims, one per story,
+one per line as `claim || recordId` (JSON is also accepted), citing that story's records. Claims
 citing an id that is not in the build are discarded, as are claims with no citation, and a failed or unconfigured call
-leaves the digest empty. The page shows surviving claims in a panel marked *written by a model*, with every citation
+leaves the digest empty. The page shows surviving claims in a panel marked *written by a model*, in story order and with every citation
 linked to its record. The digest cannot change a record, the energy total, the headline, or any table, and it is not
 part of `buzz`; it is stored beside it as an optional `digest` field.
 
@@ -292,7 +293,7 @@ tests/run.js                the suite
 npm test
 ```
 
-70 tests using only Node's built-in assertions: text decoding, feed and Atom parsing, malformed-versus-empty
+72 tests using only Node's built-in assertions: text decoding, feed and Atom parsing, malformed-versus-empty
 diagnostics, the YouTube channel-feed reader and page extractor against fixtures, classifier and alias safety,
 decay and momentum, saturation, bucket accounting, cache validation, the digest's citation rules and fail-open path,
 the relay allowlist, continuity and dedupe, deprecated-source filtering, source status, the thin-build note,

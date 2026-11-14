@@ -11,7 +11,7 @@ import { parseFeed, parseDate } from '../src/adapters/feed.js';
 import { extractChannelVideos, videosFromFeed } from '../src/adapters/youtube.js';
 import { buildAtomFeed } from '../src/engine/feed.js';
 import { saveDiagnostics } from '../src/engine/diagnostics.js';
-import { applyDigest, generateDigest, parseDigest, parseDigestDetailed } from '../src/engine/digest.js';
+import { applyDigest, generateDigest, parseDigest, parseDigestDetailed, planDigest } from '../src/engine/digest.js';
 import { coverageNoteText } from '../src/app/render.js';
 import { buildSourceRows, dedupeRecords, retainPrevious } from '../src/engine/pipeline.js';
 import {
@@ -340,6 +340,55 @@ test('digest JSON is read from an envelope, a code fence, or a short lead-in', (
   const broken = parseDigestDetailed('not json at all');
   assert.deepEqual(broken.claims, []);
   assert.match(broken.reason, /neither JSON nor cited lines/i);
+});
+
+test('records covering one story are grouped and ranked by combined weight', () => {
+  const plan = planDigest([
+    { id: 's1', title: 'Jalek Swoll joins Phoenix Racing Honda for 2027', weight: 0.2, entities: ['jalek-swoll'] },
+    { id: 's2', title: 'Phoenix Racing Honda deal marks new chapter for Swoll', weight: 0.2, entities: ['jalek-swoll'] },
+    { id: 's3', title: 'Jalek Swoll on being back and joining Phoenix Honda', weight: 0.1, entities: ['jalek-swoll'] },
+    { id: 'h1', title: 'Seth Hammaker targets the 2027 250SX championship', weight: 0.5 },
+    { id: 'p1', title: 'Entry list: 2026 Paris Supercross', weight: 0.1 },
+    { id: 'p2', title: 'Entry list 2026 Supercross of Tallin - Estonia', weight: 0.1 },
+    { id: 'x1', title: 'Video: Perth AusX Supercross press day', weight: 0.1 },
+  ]);
+  assert.equal(plan.storyOf.get('s1'), plan.storyOf.get('s2'));
+  assert.equal(plan.storyOf.get('s2'), plan.storyOf.get('s3'));
+  assert.notEqual(plan.storyOf.get('s1'), plan.storyOf.get('h1'));
+  assert.notEqual(plan.storyOf.get('p1'), plan.storyOf.get('p2'));
+  assert.notEqual(plan.storyOf.get('p1'), plan.storyOf.get('x1'));
+  assert.equal(plan.storyOf.get('s1'), 1);
+  assert.equal(plan.items.find((item) => item.id === 's1').coverage, 3);
+  assert.equal(plan.stories, 5);
+});
+
+test('digest claims follow story order, cite one story, and keep one per story', () => {
+  const records = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+  const storyOf = new Map([
+    ['a', 1],
+    ['b', 1],
+    ['c', 2],
+  ]);
+  const storyOrder = new Map([
+    [1, 0],
+    [2, 1],
+  ]);
+  const claims = applyDigest(
+    [
+      { text: 'The second story comes second in the digest.', recordIds: ['c'] },
+      { text: 'The first story comes first in the digest.', recordIds: ['a'] },
+      { text: 'A second claim about the first story is dropped.', recordIds: ['b'] },
+    ],
+    records,
+    storyOf,
+    storyOrder,
+  );
+  assert.equal(claims.length, 2);
+  assert.deepEqual(claims[0].recordIds, ['a']);
+  assert.deepEqual(claims[1].recordIds, ['c']);
+
+  const trimmed = applyDigest([{ text: 'A claim that mixes two different stories.', recordIds: ['a', 'b', 'c'] }], records, storyOf, storyOrder);
+  assert.deepEqual(trimmed[0].recordIds, ['a', 'b']);
 });
 
 test('a digest is read from claim lines when the provider ignores JSON mode', () => {

@@ -307,6 +307,7 @@ async function main() {
         model: digest.model,
         claims: digest.claimCount,
         returned: digest.returned,
+        stories: digest.stories,
         error: digest.error,
       },
       duplicatesDropped: duplicates,

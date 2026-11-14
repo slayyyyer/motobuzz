@@ -4,59 +4,188 @@
  * The score and the headline are measurements. This is the one place a model
  * writes prose, and it is deliberately fenced:
  *
- * - It sees only the records the build already trusts: id, title, publisher,
- *   topics and entities. No article bodies, no summary fields.
- * - It must answer with claims that each cite record ids from that list. Any
- *   claim citing an id that is not in the cache is discarded, and a claim with
- *   no citation is discarded.
+ * - It sees only records the build already trusts: id, title, publisher,
+ *   topics and entities, plus the story grouping described below. No article
+ *   bodies, no summary fields.
+ * - Records that cover the same event are grouped before the call, and the
+ *   groups are ranked by combined weight, so the digest leads with the story
+ *   the snapshot actually weighted highest rather than an arbitrary headline.
+ * - It must answer with one claim per story, citing record ids from that
+ *   story. Any claim citing an unknown id, no id, or ids from more than one
+ *   story is trimmed; a claim with no citation is discarded.
  * - It never touches the score, the heat tables, the headline or a record.
  * - One request per build, no retry. Without a key, or after any failure, the
  *   digest is null and the rest of the page is unchanged.
- *
- * The same provider settings as the labelling pass are reused, so an operator
- * only has one key to set.
  */
 import { enrichmentConfig } from './enrich.js';
 
-const MAX_RECORDS = 24;
+const MAX_RECORDS = 48;
+const CLUSTER_POOL = 60;
 const MAX_CLAIMS = 4;
 const MIN_CLAIM_CHARS = 15;
 const MAX_CLAIM_CHARS = 240;
 const MAX_IDS_PER_CLAIM = 6;
 const TIMEOUT_MS = 60_000;
 
+// Words that say nothing about which event a headline covers.
+const STOPWORDS = new Set(
+  'a an and are as at be been being but by for from has have he her his how in into is it its not of on or over she that the their them they this to was we were what when where which who why will with you your after before about more new now out up off'.split(
+    ' ',
+  ),
+);
+const GENERIC_WORDS = new Set(
+  'video pre press day report reports recap highlights watch results result news update updates gallery photos interview entry list confirmed more'.split(
+    ' ',
+  ),
+);
+// Shared words that are too common to prove two headlines are the same story.
+const WEAK_WORDS = new Set(
+  '2025 2026 2027 2028 supercross motocross season championship race racing world ama mxgp smx'.split(' '),
+);
+
+function titleTokens(title) {
+  const words = String(title || '')
+    .toLowerCase()
+    .replace(/[’']/g, '')
+    .split(/[^a-z0-9]+/)
+    .filter((word) => word.length > 2 && !STOPWORDS.has(word) && !GENERIC_WORDS.has(word));
+  return new Set(
+    words.map((word) => (word.length > 4 && word.endsWith('s') && !word.endsWith('ss') ? word.slice(0, -1) : word)),
+  );
+}
+
+/**
+ * Union records whose titles describe the same event.
+ *
+ * Two guards keep this from swallowing unrelated stories: similar titles must
+ * share a distinctive word, and a shared entity alone is not enough unless the
+ * titles also overlap. The Paris/Tallinn entry lists are the regression case:
+ * they share only "2026" and "supercross", so they stay apart.
+ */
+function rankStories(records) {
+  const pool = (records || []).slice(0, CLUSTER_POOL).map((record, index) => ({
+    record,
+    index,
+    tokens: titleTokens(record.title),
+  }));
+  const parent = pool.map((_, index) => index);
+
+  function find(index) {
+    let root = index;
+    while (parent[root] !== root) {
+      parent[root] = parent[parent[root]];
+      root = parent[root];
+    }
+    return root;
+  }
+
+  function union(a, b) {
+    parent[find(a)] = find(b);
+  }
+
+  for (let i = 0; i < pool.length; i += 1) {
+    for (let j = i + 1; j < pool.length; j += 1) {
+      const a = pool[i];
+      const b = pool[j];
+      const shared = [...a.tokens].filter((token) => b.tokens.has(token));
+      if (shared.length === 0) continue;
+
+      const jaccard = shared.length / (a.tokens.size + b.tokens.size - shared.length || 1);
+      const sharedEntity = (a.record.entities || []).some((entity) => (b.record.entities || []).includes(entity));
+      const distinctive = shared.some((token) => !WEAK_WORDS.has(token));
+      if ((jaccard >= 0.4 && distinctive) || (sharedEntity && jaccard >= 0.3)) union(i, j);
+    }
+  }
+
+  const groups = new Map();
+  for (const entry of pool) {
+    const root = find(entry.index);
+    if (!groups.has(root)) groups.set(root, []);
+    groups.get(root).push(entry);
+  }
+
+  return [...groups.values()]
+    .map((entries) => {
+      const sorted = entries.sort((a, b) => a.index - b.index).map((entry) => entry.record);
+      const weight = sorted.reduce((sum, record) => sum + (Number(record.weight) || 0), 0);
+      const publishers = new Set(sorted.map((record) => record.publisher)).size;
+      // A story carried by several outlets is bigger than a single item of
+      // similar weight; the bonus is small and only affects digest ordering.
+      const score = weight + 0.05 * (sorted.length - 1) + 0.01 * (publishers - 1);
+      return { records: sorted, score, first: entries[0].index };
+    })
+    .sort((a, b) => b.score - a.score || a.first - b.first);
+}
+
+/**
+ * The model's input: records grouped by story, stories ordered by importance.
+ * Every input record carries its story number and that story's coverage.
+ */
+export function planDigest(records) {
+  const groups = rankStories(records);
+  const items = [];
+  const storyOf = new Map();
+  const storyOrder = new Map();
+  let story = 0;
+
+  for (const group of groups) {
+    if (items.length >= MAX_RECORDS) break;
+    const included = [];
+    for (const record of group.records) {
+      if (items.length + included.length >= MAX_RECORDS) break;
+      included.push(record);
+    }
+    if (included.length === 0) continue;
+
+    story += 1;
+    storyOrder.set(story, story - 1);
+    for (const record of included) {
+      items.push({
+        id: record.id,
+        title: record.title,
+        publisher: record.publisher,
+        topics: record.topics || [],
+        entities: record.entities || [],
+        story,
+        coverage: included.length,
+      });
+      if (record.id) storyOf.set(record.id, story);
+    }
+  }
+
+  return { items, storyOf, storyOrder, stories: story };
+}
+
+/** Backwards-compatible view of the input for callers that only want records. */
+export function digestInput(records) {
+  return planDigest(records).items;
+}
+
 function systemPrompt() {
   return [
     'You write a short, factual digest of motocross news from a fixed list of records.',
-    'Return at most 4 lines, each exactly in this form:',
+    'The records are already grouped into stories. All records with the same "story" number cover the same event,',
+    '"coverage" is how many records that story has, and the stories are ordered by importance: story 1 is the biggest.',
+    'Return 2 to 4 lines, each exactly in this form:',
     '<one-sentence claim> || <record id>,<record id>',
     'Rules:',
-    '- 1 to 4 lines, each at most 240 characters before the separator.',
-    '- Use the literal separator || between the claim and its record ids.',
-    '- Every claim must be directly supported by the titles of the records it cites. Restating one record title in plain words is a valid claim.',
-    '- The ids must come from the given records. Never invent an id, name or fact.',
-    '- Do not state a date, time, number, quote, injury, signing, result or cause that is not in the cited titles.',
-    '- Do not repeat a claim. No hype, no speculation, no advice.',
-    '- Return nothing at all only if no title is clear enough to paraphrase.',
+    '- One claim per story, in story order, leading with story 1. Do not write two claims about the same story.',
+    '- Cite every record id in that story (at most 6; if a story has more than 6, cite its 6 highest-ranked records).',
+    '- Do not mix records from different stories in one claim.',
+    '- Every claim must be directly supported by the titles of the records it cites. Restating the shared event in plain words is a valid claim.',
+    '- The ids must come from the given records. Never invent an id, name, number or fact.',
+    '- Do not state a date, time, quote, injury, signing, result or cause that is not in the cited titles.',
+    '- No hype, no speculation, no advice.',
+    '- Return nothing at all only if no story is clear enough to paraphrase.',
     'No JSON, no bullets, no numbering, no preamble, no code fences.',
   ].join('\n');
 }
 
-/** Flatten the cache records into the only fields the model may see. */
-export function digestInput(records) {
-  return (records || []).slice(0, MAX_RECORDS).map((record) => ({
-    id: record.id,
-    title: record.title,
-    publisher: record.publisher,
-    topics: record.topics || [],
-    entities: record.entities || [],
-  }));
-}
-
 /**
- * Tolerate fenced JSON, a bare array, a {claims:[...]} envelope, and a short
- * prose lead-in before the JSON. Returns the claims plus why parsing failed,
- * so the build report can distinguish "not JSON" from "all claims rejected".
+ * Tolerate fenced JSON, a bare array, a {claims:[...]} envelope, a short prose
+ * lead-in, and the cited-line format. Returns the claims plus why parsing
+ * failed, so the build report can distinguish "not JSON" from "all claims
+ * rejected".
  */
 export function parseDigestDetailed(text) {
   const trimmed = String(text || '')
@@ -93,12 +222,12 @@ export function parseDigestDetailed(text) {
     .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').trim())
     .filter((line) => line.includes('||'))
     .map((line) => {
-      const [text, cited] = line.split('||');
+      const [claimText, cited] = line.split('||');
       const recordIds = cited
         .split(/[,\s]+/)
         .map((id) => id.replace(/[\[\]"'`]/g, '').trim())
         .filter(Boolean);
-      return { text: text.trim(), recordIds };
+      return { text: claimText.trim(), recordIds };
     });
 
   return {
@@ -112,36 +241,60 @@ export function parseDigest(text) {
 }
 
 /**
- * Keep only claims that make sense and cite records that exist.
+ * Keep only claims that make sense, cite records that exist, and cover one
+ * story each. With a story map, the claim is trimmed to its dominant story,
+ * one claim per story survives, and claims are ordered by story importance.
  *
  * @param {object[]} rawClaims
  * @param {object[]} records Records from the same build.
+ * @param {Map<string, number>} [storyOf]
+ * @param {Map<number, number>} [storyOrder]
  */
-export function applyDigest(rawClaims, records) {
+export function applyDigest(rawClaims, records, storyOf = null, storyOrder = null) {
   const known = new Set((records || []).map((record) => record.id).filter(Boolean));
   const claims = [];
+  const usedStories = new Set();
 
   for (const claim of rawClaims || []) {
     const text = typeof claim?.text === 'string' ? claim.text.trim().replace(/\s+/g, ' ') : '';
     if (text.length < MIN_CLAIM_CHARS || text.length > MAX_CLAIM_CHARS) continue;
 
     const cited = claim.recordIds ?? claim.record_ids ?? [];
-    const ids = [
+    let ids = [
       ...new Set(
         (Array.isArray(cited) ? cited : [cited])
           .filter((id) => typeof id === 'string')
           .map((id) => id.trim())
           .filter((id) => known.has(id)),
       ),
-    ].slice(0, MAX_IDS_PER_CLAIM);
+    ];
     if (ids.length === 0) continue;
-    if (claims.some((existing) => existing.text.toLowerCase() === text.toLowerCase())) continue;
 
-    claims.push({ text, recordIds: ids });
-    if (claims.length === MAX_CLAIMS) break;
+    if (storyOf?.size) {
+      const counts = new Map();
+      for (const id of ids) {
+        const story = storyOf.get(id);
+        if (story != null) counts.set(story, (counts.get(story) || 0) + 1);
+      }
+      const dominant = [...counts.entries()].sort(
+        (a, b) => b[1] - a[1] || (storyOrder?.get(a[0]) ?? 0) - (storyOrder?.get(b[0]) ?? 0),
+      )[0];
+      if (!dominant || usedStories.has(dominant[0])) continue;
+      usedStories.add(dominant[0]);
+      ids = ids.filter((id) => storyOf.get(id) === dominant[0]).slice(0, MAX_IDS_PER_CLAIM);
+    } else {
+      ids = ids.slice(0, MAX_IDS_PER_CLAIM);
+    }
+
+    if (claims.some((existing) => existing.text.toLowerCase() === text.toLowerCase())) continue;
+    claims.push({ text, recordIds: ids, story: storyOf?.get(ids[0]) });
   }
 
-  return claims;
+  if (storyOrder?.size) {
+    claims.sort((a, b) => (storyOrder.get(a.story) ?? 0) - (storyOrder.get(b.story) ?? 0));
+  }
+
+  return claims.slice(0, MAX_CLAIMS).map((claim) => ({ text: claim.text, recordIds: claim.recordIds }));
 }
 
 async function postDigest({ config, items, fetchImpl, signal }) {
@@ -188,32 +341,33 @@ async function postDigest({ config, items, fetchImpl, signal }) {
  * @param {object[]} records Scored records, highest weight first.
  * @param {{env?: object, fetchImpl?: Function, now?: number}} [options]
  * @returns {Promise<{configured: boolean, model: string|null, digest: object|null,
- *   claimCount: number, returned: number, error: string|null}>}
+ *   claimCount: number, returned: number, stories: number, error: string|null}>}
  */
 export async function generateDigest(records, { env = process.env, fetchImpl = fetch, now = Date.now() } = {}) {
   const config = enrichmentConfig(env);
-  const items = digestInput(records);
+  const plan = planDigest(records);
   const report = {
     configured: Boolean(config),
     model: config?.model ?? null,
     digest: null,
     claimCount: 0,
     returned: 0,
+    stories: plan.stories,
     error: null,
   };
-  if (!config || items.length === 0) return report;
+  if (!config || plan.items.length === 0) return report;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const result = await postDigest({ config, items, fetchImpl, signal: controller.signal });
+    const result = await postDigest({ config, items: plan.items, fetchImpl, signal: controller.signal });
     if (!result.ok) {
       report.error = result.error;
       return report;
     }
     const parsed = parseDigestDetailed(result.text);
     report.returned = parsed.claims.length;
-    const claims = applyDigest(parsed.claims, items);
+    const claims = applyDigest(parsed.claims, plan.items, plan.storyOf, plan.storyOrder);
     if (claims.length === 0) {
       report.error =
         parsed.reason ??

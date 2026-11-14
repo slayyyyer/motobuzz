@@ -325,13 +325,19 @@ The base URL must be HTTPS, or HTTP on loopback for local testing, so a key is n
 plaintext remote host.
 
 **The digest** (`digest.js`) is the one place a model writes prose, and it is fenced off from the
-measurement. It runs once per build, after scoring, over at most 24 scored records. The input is
-only each record's `id`, `title`, `publisher`, `topics`, and `entities` — no summary field and no
-article body. The contract:
+measurement. It runs once per build, after scoring, over at most 48 scored records. Before the
+call, titles are grouped by shared distinctive words and entities, and the groups are ranked by
+combined weight plus a small bonus for extra outlets. The model therefore receives stories, not a
+flat list, and the first story is the one the snapshot weighted highest. The input is only each
+record's `id`, `title`, `publisher`, `topics`, and `entities`, plus its story number — no summary
+field and no article body. The contract:
 
-- 1–4 claims, each at most 240 characters. The model is asked for one claim per line as
-  `claim || recordId`; a JSON `claims` array is accepted too, because a provider may ignore JSON
-  mode. Either way every citation is checked against the input.
+- 1–4 claims, one per story, each at most 240 characters. The model is asked for one claim per
+  line as `claim || recordId`; a JSON `claims` array is accepted too, because a provider may
+  ignore JSON mode. Either way every citation is checked against the input, and a claim that mixes
+  stories is trimmed to its dominant story.
+- Claims are ordered by story rank, not by the order the model wrote them, and a second claim
+  about the same story is dropped.
 - Every cited id must exist in the input. A claim citing an unknown id, or no id at all, is
   dropped; a claim too short, too long, or duplicated is dropped too.
 - No retry and no substitute request. No key, timeout, HTTP error, or malformed response leaves
@@ -543,7 +549,7 @@ one of them is about the sport.
 
 ## 13. Tests and reproducibility
 
-`npm test` runs 70 tests on Node's built-in assertions, with no test framework and no
+`npm test` runs 72 tests on Node's built-in assertions, with no test framework and no
 dependencies: text decoding and normalization, RSS and Atom parsing, malformed-versus-empty
 diagnostics, the YouTube channel feed and page extractor against fixtures, classifier and alias
 safety (including the surnames that must *not* match), decay, momentum, saturation, bucket
