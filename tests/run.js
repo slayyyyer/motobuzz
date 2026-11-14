@@ -489,12 +489,17 @@ test('a failed parse leaves a diagnostic excerpt on disk', async () => {
   }
 });
 
-test('the Atom feed carries the records and escapes their titles', () => {
+test('the Atom feed carries the records, escapes titles, and uses absolute links', () => {
   const snapshot = buildSnapshot([record({ title: 'Tomac & Jett <win>' })], { now: NOW });
-  const xml = buildAtomFeed({ generatedAt: NOW, site: { name: 'MotoBuzz' }, buzz: snapshot.buzz, items: snapshot.items });
+  const xml = buildAtomFeed(
+    { generatedAt: NOW, site: { name: 'MotoBuzz' }, buzz: snapshot.buzz, items: snapshot.items },
+    { selfUrl: 'feed.xml', siteUrl: 'https://example.github.io/motobuzz/' },
+  );
   assert.match(xml, /<feed xmlns="http:\/\/www.w3.org\/2005\/Atom">/);
   assert.match(xml, /Tomac &amp; Jett &lt;win&gt;/);
   assert.equal((xml.match(/<entry>/g) || []).length, 1);
+  assert.match(xml, /<link rel="self" href="https:\/\/example.github.io\/motobuzz\/feed.xml"\/>/);
+  assert.match(xml, /<link rel="alternate" href="https:\/\/example.github.io\/motobuzz\/"\/>/);
 });
 
 /* ---------- scoring ---------- */

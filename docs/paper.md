@@ -226,10 +226,6 @@ Each adapter normalizes on the way in and refuses to invent on the way out:
   parses, the source reports `malformed` and a small excerpt is kept under `data/diagnostics/`
   for diagnosis; everything else keeps working.
 
-Google News records are also capped at six per publisher per build, counted across queries, so a
-single outlet's syndication cannot fill the index's share of the board. Across eleven stored
-builds no publisher exceeded four records, so the cap is a guard rather than a trim.
-
 A filter runs before any headline counts: `NEWS_TITLE_DENYLIST` removes search-index spam —
 "watch live", "live stream", bracketed CJK spam — that is technically a motocross headline and
 not a story. It also applies to retained records, so a headline the denylist rejects today cannot
@@ -367,21 +363,21 @@ energy = kind weight × engagement × 2^(−age in hours ÷ half-life in hours)
 ### 9.2 The meter
 
 ```
-score = 100 × (1 − e^(−total energy ÷ 18))
+score = 100 × (1 − e^(−total energy ÷ 26))
 ```
 
 An exponential saturation: the first few stories move the needle steeply, and past a certain
 volume the meter flattens, because "everything is happening at once" is genuinely hard to
-distinguish from "a bit more is happening". 18 is the energy at which the meter reads about 63.
+distinguish from "a bit more is happening". 26 is the energy at which the meter reads about 63.
 
-The constant is not a taste. When Instagram and Reddit were removed, the source mix changed and
-the old 26 left the top three bands unreachable: eleven stored builds, with the removed sources
-filtered out, had 24-hour energies of 6.3 to 13.4 and a median of 12.1, which scored 21–40. At 18
-the same sample spans 29–52 with the median at 49, so an ordinary off-season day reads Idling to
-Warming up and the hot bands stay available for a race weekend. `npm run calibrate` prints the
-distribution and the constant that would put the median at 50, so the next recalibration is
-evidence rather than guesswork. The sample contains no race weekend, which is the trigger to run
-it again.
+The constant is held. Removing Instagram and Reddit changed the source mix, so it was tested
+again against eleven stored builds with those records filtered out: 24-hour energy ran 6.3 to
+13.4, which reads 21–43 at 26 — Idling to Warming up, where an off-season day should sit. A
+constant of 18, chosen to put that sample's median at 50, was rejected because it made an
+ordinary day with ordinary chatter read Running hot, and the sample contains no race weekend to
+justify a hotter scale. `npm run calibrate` prints the distribution, the band the median lands
+in, and the constant that would centre the sample, together with why centring an off-season
+sample is not a goal. Re-run it after a race weekend before touching the number.
 
 | Score | Label | Reading |
 | --- | --- | --- |

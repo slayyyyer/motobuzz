@@ -81,17 +81,20 @@ async function main() {
   const median = energies[Math.floor(energies.length / 2)];
   const mean = energies.reduce((sum, value) => sum + value, 0) / energies.length;
   const suggested = median / Math.LN2;
+  const medianScore = Math.round(100 * (1 - Math.exp(-median / BUZZ.saturationEnergy)));
+  const band = [...BUZZ.bands].reverse().find((entry) => medianScore >= entry.min);
 
   process.stdout.write(
     `\nn ${energies.length} · min ${energies[0]} · median ${median} · mean ${mean.toFixed(2)} · max ${energies.at(-1)}\n`,
   );
   process.stdout.write(
-    `current saturationEnergy ${BUZZ.saturationEnergy} puts the median at ${Math.round(
-      100 * (1 - Math.exp(-median / BUZZ.saturationEnergy)),
-    )}/100\n`,
+    `current saturationEnergy ${BUZZ.saturationEnergy} puts the median at ${medianScore}/100 (${band ? band.label : 'unknown'})\n`,
   );
-  process.stdout.write(`saturationEnergy ${suggested.toFixed(1)} would put the median at 50\n`);
-  process.stdout.write('Re-run after a race weekend before changing the constant: this sample is off-season.\n');
+  process.stdout.write(
+    `saturationEnergy ${suggested.toFixed(1)} would put this sample's median at 50, which is not a target:\n`,
+  );
+  process.stdout.write('matching an off-season sample to the middle of the scale pushes ordinary days into the hot bands.\n');
+  process.stdout.write('Re-run with a race weekend included before changing the constant.\n');
 }
 
 main().catch((error) => {

@@ -58,6 +58,9 @@ jobs:
         run: node scripts/build-buzz-cache.js
 
       - name: Assemble the static site
+        env:
+          # Optional: the public origin for absolute links in dist/feed.xml.
+          MOTOBUZZ_SITE_URL: ${{ vars.MOTOBUZZ_SITE_URL }}
         run: |
           mkdir -p dist/data
           cp index.html styles.css dist/

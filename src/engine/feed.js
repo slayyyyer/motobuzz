@@ -19,12 +19,23 @@ function iso(ms) {
   return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 }
 
+/** Feed links must be absolute; resolve a relative one against the site root. */
+function absoluteUrl(value, base) {
+  try {
+    return new URL(String(value), base).href;
+  } catch {
+    return String(value ?? '');
+  }
+}
+
 /**
  * @param {object} cache A cache that passed validateCache().
  * @param {{selfUrl?: string, siteUrl?: string, limit?: number}} [options]
  * @returns {string} Atom 1.0 XML.
  */
-export function buildAtomFeed(cache, { selfUrl = 'feed.xml', siteUrl = './', limit = 30 } = {}) {
+export function buildAtomFeed(cache, { selfUrl = 'feed.xml', siteUrl = 'https://motobuzz.invalid/', limit = 30 } = {}) {
+  const site = absoluteUrl(siteUrl, 'https://motobuzz.invalid/');
+  const self = absoluteUrl(selfUrl, site);
   const generatedAt = cache?.generatedAt ?? Date.now();
   const siteName = cache?.site?.name || 'MotoBuzz';
   const items = (cache?.items || []).slice(0, Math.max(1, limit));
@@ -55,8 +66,8 @@ export function buildAtomFeed(cache, { selfUrl = 'feed.xml', siteUrl = './', lim
     '<?xml version="1.0" encoding="utf-8"?>',
     '<feed xmlns="http://www.w3.org/2005/Atom">',
     `  <title>${xml(siteName)}${xml(headline)}</title>`,
-    `  <link rel="self" href="${xml(selfUrl)}"/>`,
-    `  <link rel="alternate" href="${xml(siteUrl)}"/>`,
+    `  <link rel="self" href="${xml(self)}"/>`,
+    `  <link rel="alternate" href="${xml(site)}"/>`,
     `  <id>urn:motobuzz:feed</id>`,
     `  <updated>${updated}</updated>`,
     '  <author><name>MotoBuzz</name></author>',

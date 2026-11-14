@@ -39,16 +39,17 @@ export const KIND_META = Object.freeze({
 /**
  * Buzz score = 100 × (1 − e^(−energy / saturationEnergy)).
  *
- * The saturation point was re-derived on 2026-11-13, after Instagram and Reddit
- * were removed, from eleven stored builds with those records filtered out: total
- * 24-hour energy ran 6.3–13.4 with a median of 12.1. 18 maps that to 29–52 and
- * puts the median at 49, so an ordinary off-season day reads Idling to Warming
- * up and the hot bands remain available for a race weekend. `npm run calibrate`
- * reprints the distribution and the value that would put the median at 50. The
- * sample contains no race weekend; re-check the constant after one.
+ * The constant is held at 26. A post-removal review of eleven stored builds,
+ * with the Instagram and Reddit records filtered out, put off-season 24-hour
+ * energy at 6.3–13.4; at 26 those days read 21–43, Idling to Warming up, which
+ * is where a quiet stretch belongs. Mapping that sample's median to 50 instead
+ * (18) made a day with ordinary chatter read Running hot, and the sample has no
+ * race weekend in it, so there was no evidence for the hotter scale. `npm run
+ * calibrate` reprints the distribution. Re-run it with a race weekend included
+ * before touching this number.
  */
 export const BUZZ = Object.freeze({
-  saturationEnergy: 18,
+  saturationEnergy: 26,
   bands: Object.freeze([
     { level: 'quiet', min: 0, label: 'Quiet', note: 'Almost nothing new is landing.' },
     { level: 'idle', min: 15, label: 'Idling', note: 'A slow stretch of the week.' },
@@ -311,14 +312,6 @@ export const FEEDS = Object.freeze([
     url: 'https://vurbmoto.com/feed/',
   },
 ]);
-
-/**
- * No single outlet should be able to fill the Google News portion of the board
- * through syndication. Six per publisher per build is a guard, not a trim: the
- * eleven stored builds show at most four records from one publisher in a build,
- * across 51 distinct publishers.
- */
-export const NEWS_PUBLISHER_CAP = 6;
 
 /**
  * A rider-name query answers only a bounded number of terms, so the watchlist is

@@ -49,12 +49,13 @@ energy = kind weight × engagement × 2^(−age in hours ÷ half-life in hours)
   counts for more but cannot swallow the board.
 - Recency is a half-life decay, not a step function.
 
-The meter is `100 × (1 − e^(−total energy ÷ 18))`: it climbs steeply with the first few stories and flattens out as
-the room gets loud. The 18 was re-derived on 2026-11-13 from eleven stored builds with the Instagram and Reddit
-records filtered out: 24-hour energy ran 6.3–13.4 with a median of 12.1, which this constant maps to 29–52. Without
-that change the top three bands would have been unreachable at the source mix the site now reads. `npm run
-calibrate` reprints the distribution and the value that would put the median at 50; the sample is off-season and
-should be re-checked after a race weekend.
+The meter is `100 × (1 − e^(−total energy ÷ 26))`: it climbs steeply with the first few stories and flattens out as
+the room gets loud. The constant is held at 26. A post-removal review of eleven stored builds, with the Instagram
+and Reddit records filtered out, put off-season days at 6.3–13.4 energy, which reads 21–43 on this scale — Idling to
+Warming up, where a quiet stretch belongs. A lower constant (18) was tried and rejected: it made an ordinary
+off-season day read Running hot, and the sample has no race weekend in it. `npm run calibrate` reprints the
+distribution and says why its own suggestion is not a target; re-run it with a race weekend included before changing
+the constant.
 
 | Score | Label | Reading |
 | --- | --- | --- |
@@ -111,10 +112,6 @@ route is the honest way to include them.
 prints a coverage note beside the score: "Thin build: N of M sources answered…". The number itself is not rescaled,
 because a quiet week and a failed fetch are different claims and only one of them is about the sport.
 
-**One outlet cannot fill the index.** Google News records are capped at `NEWS_PUBLISHER_CAP` (6) per publisher per
-build, counted across queries, so syndication cannot dominate the board. Eleven stored builds show at most four
-records from one publisher, so the cap is a guard rather than a trim.
-
 **X is not scraped.** It still refuses anonymous reads. If you run your own RSS bridge (RSSHub, for example), set
 `MOTOBUZZ_BRIDGE_URL` for the build and the handles in `BRIDGE_HANDLES` are read through it, labelled as bridged.
 Without it those sources report `not configured` on the page.
@@ -167,6 +164,7 @@ PORT=8099 HOST=0.0.0.0 npm start
 3. Optionally add a repository variable `MOTOBUZZ_PUBLIC_URL` pointing at
    `https://<user>.github.io/<repo>/data/buzz-cache.json`. The build fetches it first so records survive a bad hour.
 4. Optionally add `MOTOBUZZ_BRIDGE_URL` as a repository variable (not a secret) if you run a social bridge.
+   Add `MOTOBUZZ_SITE_URL` if the site is served from a custom domain, so `feed.xml`'s absolute links point there.
 5. Run **Buzz cache and Pages** from the Actions tab, or push to `main`.
 
 The workflow runs at minute 23 of every hour, on every push to `main`, and on manual dispatch. Because nothing is
@@ -210,7 +208,9 @@ are dropped and counted.
 
 `dist/feed.xml` is an Atom feed of the same records, written by `scripts/build-feed.js` from the cache after the
 build. It carries the newest 30 records with their link, publisher, and publish time, plus the current headline, and
-`index.html` links to it as the alternate feed. Nothing in it is generated separately from the cache.
+`index.html` links to it as the alternate feed. Nothing in it is generated separately from the cache, and every link
+in it is absolute: the site origin comes from the `MOTOBUZZ_SITE_URL` repository variable when set, otherwise from
+`GITHUB_REPOSITORY` as `https://<owner>.github.io/<repo>/`, and a local run uses `http://127.0.0.1:8080/`.
 
 ## Adding a source or a name
 

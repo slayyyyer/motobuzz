@@ -25,7 +25,6 @@ import {
   ENTITY_BY_ID,
   FETCH,
   INGEST,
-  NEWS_PUBLISHER_CAP,
   SITE,
   WINDOW,
 } from '../src/config.js';
@@ -227,8 +226,6 @@ async function main() {
   // --- collect --------------------------------------------------------------
   const ordered = [];
   let offTarget = 0;
-  let publisherCapped = 0;
-  const googlePublishers = new Map();
   for (const attempt of attempts) {
     const riderQuery = attempt.def.id.startsWith('gnews-riders-');
     for (const record of attempt.records) {
@@ -240,17 +237,6 @@ async function main() {
       if (riderQuery && !isRiderStory(normalized)) {
         offTarget += 1;
         continue;
-      }
-      // One outlet's syndication should not fill the index's share of the board.
-      // The cap is counted per source and publisher, across all index queries.
-      if (attempt.def.type === 'google') {
-        const key = `${normalized.sourceId}|${normalized.publisher}`;
-        const used = googlePublishers.get(key) || 0;
-        if (used >= NEWS_PUBLISHER_CAP) {
-          publisherCapped += 1;
-          continue;
-        }
-        googlePublishers.set(key, used + 1);
       }
       ordered.push(normalized);
     }
@@ -313,8 +299,6 @@ async function main() {
       },
       duplicatesDropped: duplicates,
       riderQueryOffTarget: offTarget,
-      publisherCapped,
-      publisherCap: NEWS_PUBLISHER_CAP,
       recordsPruned: pruned,
       recordsRetained: retained.length,
       recordsKept: items.length,
@@ -364,11 +348,6 @@ async function main() {
   if (unconfiguredRetained > 0) {
     log(
       `  ${unconfiguredRetained} retained record${unconfiguredRetained === 1 ? '' : 's'} dropped: the source is no longer configured`,
-    );
-  }
-  if (publisherCapped > 0) {
-    log(
-      `  ${publisherCapped} Google News record${publisherCapped === 1 ? '' : 's'} dropped: more than ${NEWS_PUBLISHER_CAP} from one publisher`,
     );
   }
   if (diagnostics.length > 0) {
