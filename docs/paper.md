@@ -305,6 +305,13 @@ distinctive: `Roczen`, `Tomac`, `Sexton`, `Deegan` are aliases; a bare `Cooper`,
 `Lawrence`, or `Brown` is not, because those would let one rider inherit another's buzz. "Jett"
 alone is safe; "Hunter" alone is not.
 
+Some full names are common enough to belong to someone else. `Pierce Brown` is also a
+novelist, `Andrea Adamo` a designer, and `Justin Cooper` an actor; a full-name match alone
+would put their stories into rider heat. Those entries carry `contextRequired`, so the
+classifier and the optional labelling pass only accept the name when the title or summary
+also contains a motocross term — a configured series, governing body, venue, manufacturer, or
+race vocabulary. A distinctive name such as `Jalek Swoll` is unaffected.
+
 **Region.** American-series words (venues, `supercross`, `ama`, `motocross nationals`) against
 world-championship words (`mxgp`, `fim`, `mxon`, and European venues). Both present is `mixed`
 unless one side leads by more than 1.5×.
@@ -549,7 +556,7 @@ one of them is about the sport.
 
 ## 13. Tests and reproducibility
 
-`npm test` runs 72 tests on Node's built-in assertions, with no test framework and no
+`npm test` runs 74 tests on Node's built-in assertions, with no test framework and no
 dependencies: text decoding and normalization, RSS and Atom parsing, malformed-versus-empty
 diagnostics, the YouTube channel feed and page extractor against fixtures, classifier and alias
 safety (including the surnames that must *not* match), decay, momentum, saturation, bucket

@@ -521,8 +521,9 @@ function renderMethod(state) {
     <div>
       <h3>Watchlist</h3>
       <p>${Object.keys(ENTITY_BY_ID).length} names are tracked across ${TOPICS.length} topics. A name only counts when the
-      story's title or summary actually contains it, and ambiguous surnames are only matched as full names, so a
-      different rider with the same last name cannot inherit someone else's buzz.</p>
+      story's title or summary actually contains it, and ambiguous surnames are only matched as full names. Common
+      names such as Pierce Brown also need a motocross term in the story, so a novelist or football player with the
+      same name cannot inherit the rider's buzz.</p>
     </div>
   </div>`;
 }

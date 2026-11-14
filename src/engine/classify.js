@@ -6,7 +6,7 @@
  * No model is involved. Every rule is a word or phrase in config.js, so the same
  * headline always produces the same labels, and the page can explain itself.
  */
-import { REGION_RULES, TOPICS, WATCHLIST } from '../config.js';
+import { MOTOCROSS_CONTEXT, REGION_RULES, TOPICS, WATCHLIST } from '../config.js';
 import { normalizeForMatch } from '../lib/text.js';
 
 const PHRASE_GAP = '[\\s\\W_]+';
@@ -25,6 +25,7 @@ export function buildMatchers() {
     kind: entry.kind,
     name: entry.name,
     patterns: (entry.aliases || [entry.name]).map(compileAlias).filter(Boolean),
+    contextRequired: Boolean(entry.contextRequired),
   })).filter((entry) => entry.patterns.length > 0);
 
   const topics = TOPICS.map((topic) => ({
@@ -38,10 +39,18 @@ export function buildMatchers() {
     world: REGION_RULES.world.map((word) => normalizeForMatch(word)).filter(Boolean),
   };
 
-  return { entities, topics, region };
+  const context = MOTOCROSS_CONTEXT.map(compileAlias).filter(Boolean);
+
+  return { entities, topics, region, context };
 }
 
 const MATCHERS = buildMatchers();
+
+/** True when the text contains a term that places it inside motocross. */
+export function hasMotocrossContext(text) {
+  const normalized = normalizeForMatch(text || '');
+  return MATCHERS.context.some((pattern) => pattern.test(normalized));
+}
 
 function keywordHits(text, keyword) {
   if (keyword.includes(' ')) return text.includes(keyword) ? 1 : 0;
@@ -59,10 +68,12 @@ export function classify(record) {
   const fullText = normalizeForMatch(`${record?.title || ''} ${record?.summary || ''}`);
 
   const entityIds = [];
+  // Computed once: a common-name rider needs a motocross term somewhere in the story.
+  const motocrossContext = hasMotocrossContext(fullText);
   for (const entity of MATCHERS.entities) {
     // Titles carry the weight; a name buried in a long summary is a weak mention.
     const hit = entity.patterns.some((pattern) => pattern.test(titleText) || pattern.test(fullText));
-    if (hit) entityIds.push(entity.id);
+    if (hit && (!entity.contextRequired || motocrossContext)) entityIds.push(entity.id);
   }
 
   const scored = [];

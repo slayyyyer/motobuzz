@@ -515,6 +515,42 @@ test('ambiguous surnames are only matched as full names', () => {
   assert.ok(!bare.entities.includes('jeremy-martin'));
 });
 
+test('common-name riders require motocross context', () => {
+  const book = classify({
+    title: 'Pierce Brown prepares to wrap up his Red Rising series and say goodbye to his beloved hero',
+    summary: null,
+  });
+  assert.ok(!book.entities.includes('pierce-brown'));
+
+  const football = classify({ title: 'Pierce Brown 2026 Stats per Game - NCAAF', summary: null });
+  assert.ok(!football.entities.includes('pierce-brown'));
+
+  const race = classify({ title: 'Pierce Brown returns to racing at Anaheim 1 Supercross', summary: null });
+  assert.ok(race.entities.includes('pierce-brown'));
+
+  const withSummary = classify({
+    title: 'Pierce Brown joins the team',
+    summary: 'The motocross rider will race in 2027.',
+  });
+  assert.ok(withSummary.entities.includes('pierce-brown'));
+
+  // The gate is for common names only: a distinctive rider still counts without a context word.
+  const distinctive = classify({ title: 'Jalek Swoll will not retire', summary: null });
+  assert.ok(distinctive.entities.includes('jalek-swoll'));
+});
+
+test('the LLM pass cannot attach a common-name rider without motocross context', () => {
+  const book = [{ id: 'book', title: 'Pierce Brown wraps up his Red Rising series', summary: null, topics: [], entities: [] }];
+  assert.equal(applyEnrichment(book, [{ id: 'book', entities: ['pierce-brown'] }]), 0);
+  assert.deepEqual(book[0].entities, []);
+
+  const race = [
+    { id: 'race', title: 'Pierce Brown returns at Anaheim Supercross', summary: null, topics: [], entities: [] },
+  ];
+  assert.equal(applyEnrichment(race, [{ id: 'race', entities: ['pierce-brown'] }]), 1);
+  assert.deepEqual(race[0].entities, ['pierce-brown']);
+});
+
 test('regions split American and world series', () => {
   assert.equal(classify({ title: 'Anaheim 1 Supercross preview', summary: null }).region, 'us');
   assert.equal(classify({ title: 'MXGP of Kegums results', summary: null }).region, 'world');

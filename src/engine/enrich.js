@@ -18,6 +18,7 @@
  *   keyword labels exactly as they were. The build never depends on it.
  */
 import { ENTITY_BY_ID, TOPICS } from '../config.js';
+import { hasMotocrossContext } from './classify.js';
 
 const DEFAULT_BASE = 'https://api.z.ai/api/paas/v4';
 const DEFAULT_MODEL = 'glm-4.5-flash';
@@ -102,8 +103,14 @@ export function applyEnrichment(records, results) {
     const topics = (Array.isArray(result.topics) ? result.topics : [])
       .filter((id) => typeof id === 'string' && TOPIC_SET.has(id))
       .slice(0, MAX_TOPICS);
+    const storyText = `${record.title || ''} ${record.summary || ''}`;
     const entities = (Array.isArray(result.entities) ? result.entities : [])
-      .filter((id) => typeof id === 'string' && ENTITY_SET.has(id))
+      .filter(
+        (id) =>
+          typeof id === 'string' &&
+          ENTITY_SET.has(id) &&
+          (!ENTITY_BY_ID[id]?.contextRequired || hasMotocrossContext(storyText)),
+      )
       .slice(0, MAX_ENTITIES);
 
     if (topics.length === 0 && entities.length === 0) continue;

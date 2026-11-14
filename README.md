@@ -86,7 +86,9 @@ The score uses a 24-hour window. The cache retains up to 72 hours for browsing, 
 - Eight fixed topics — signings, injuries, results, schedules, bikes and tech, teams and business, rules and safety,
   culture and media — scored by keyword hits, with title hits weighted double.
 - A watchlist of riders, brands, teams, and series, matched through aliases. Surnames only become aliases when they
-  are distinctive; a bare "Cooper" or "Martin" is never counted, so one rider cannot inherit another's buzz.
+  are distinctive; a bare "Cooper" or "Martin" is never counted, so one rider cannot inherit another's buzz. A rider
+  whose full name is shared with someone else can be marked `contextRequired`, which makes a motocross term in the
+  title or summary mandatory before the name counts.
 - A region read: American series versus world championship, from venue and series words.
 
 Everything lives in [`src/config.js`](src/config.js). Topics and names are deterministic lists. The one model-written
@@ -293,7 +295,7 @@ tests/run.js                the suite
 npm test
 ```
 
-72 tests using only Node's built-in assertions: text decoding, feed and Atom parsing, malformed-versus-empty
+74 tests using only Node's built-in assertions: text decoding, feed and Atom parsing, malformed-versus-empty
 diagnostics, the YouTube channel-feed reader and page extractor against fixtures, classifier and alias safety,
 decay and momentum, saturation, bucket accounting, cache validation, the digest's citation rules and fail-open path,
 the relay allowlist, continuity and dedupe, deprecated-source filtering, source status, the thin-build note,

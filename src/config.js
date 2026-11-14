@@ -156,7 +156,10 @@ export const REGION_RULES = Object.freeze({
 /**
  * The watchlist. Surnames are only used as aliases when they are distinctive in
  * a motocross headline; anything ambiguous stays a full-name match so a story
- * about a different Martin or Cooper cannot be counted for a rider.
+ * about a different Martin or Cooper cannot be counted for a rider. A rider
+ * whose full name is common enough to belong to an unrelated namesake carries
+ * `contextRequired`, which makes a motocross term mandatory before the match
+ * counts.
  */
 export const RIDERS = Object.freeze([
   { id: 'jett-lawrence', name: 'Jett Lawrence', aliases: ['Jett Lawrence', 'Jett'] },
@@ -166,7 +169,7 @@ export const RIDERS = Object.freeze([
   { id: 'chase-sexton', name: 'Chase Sexton', aliases: ['Chase Sexton', 'Sexton'] },
   { id: 'ken-roczen', name: 'Ken Roczen', aliases: ['Ken Roczen', 'Roczen'] },
   { id: 'aaron-plessinger', name: 'Aaron Plessinger', aliases: ['Aaron Plessinger', 'Plessinger'] },
-  { id: 'jason-anderson', name: 'Jason Anderson', aliases: ['Jason Anderson', 'El Hombre'] },
+  { id: 'jason-anderson', name: 'Jason Anderson', aliases: ['Jason Anderson', 'El Hombre'], contextRequired: true },
   { id: 'malcolm-stewart', name: 'Malcolm Stewart', aliases: ['Malcolm Stewart', 'Mookie'] },
   { id: 'haiden-deegan', name: 'Haiden Deegan', aliases: ['Haiden Deegan', 'Deegan'] },
   { id: 'rj-hampshire', name: 'RJ Hampshire', aliases: ['RJ Hampshire', 'Hampshire'] },
@@ -178,28 +181,28 @@ export const RIDERS = Object.freeze([
   { id: 'julien-beaumer', name: 'Julien Beaumer', aliases: ['Julien Beaumer', 'Beaumer'] },
   { id: 'seth-hammaker', name: 'Seth Hammaker', aliases: ['Seth Hammaker', 'Hammaker'] },
   { id: 'nate-thrasher', name: 'Nate Thrasher', aliases: ['Nate Thrasher', 'Thrasher'] },
-  { id: 'justin-cooper', name: 'Justin Cooper', aliases: ['Justin Cooper'] },
+  { id: 'justin-cooper', name: 'Justin Cooper', aliases: ['Justin Cooper'], contextRequired: true },
   { id: 'dylan-ferrandis', name: 'Dylan Ferrandis', aliases: ['Dylan Ferrandis', 'Ferrandis'] },
   { id: 'max-anstie', name: 'Max Anstie', aliases: ['Max Anstie', 'Anstie'] },
   { id: 'justin-barcia', name: 'Justin Barcia', aliases: ['Justin Barcia', 'Barcia'] },
-  { id: 'pierce-brown', name: 'Pierce Brown', aliases: ['Pierce Brown'] },
+  { id: 'pierce-brown', name: 'Pierce Brown', aliases: ['Pierce Brown'], contextRequired: true },
   { id: 'ty-masterpool', name: 'Ty Masterpool', aliases: ['Ty Masterpool', 'Masterpool'] },
   { id: 'cameron-mcadoo', name: 'Cameron McAdoo', aliases: ['Cameron McAdoo', 'McAdoo'] },
   { id: 'austin-forkner', name: 'Austin Forkner', aliases: ['Austin Forkner', 'Forkner'] },
   { id: 'tom-vialle', name: 'Tom Vialle', aliases: ['Tom Vialle', 'Vialle'] },
   { id: 'garrett-marchbanks', name: 'Garrett Marchbanks', aliases: ['Garrett Marchbanks', 'Marchbanks'] },
-  { id: 'dean-wilson', name: 'Dean Wilson', aliases: ['Dean Wilson'] },
-  { id: 'jeremy-martin', name: 'Jeremy Martin', aliases: ['Jeremy Martin'] },
+  { id: 'dean-wilson', name: 'Dean Wilson', aliases: ['Dean Wilson'], contextRequired: true },
+  { id: 'jeremy-martin', name: 'Jeremy Martin', aliases: ['Jeremy Martin'], contextRequired: true },
   { id: 'adam-cianciarulo', name: 'Adam Cianciarulo', aliases: ['Adam Cianciarulo', 'Cianciarulo'] },
   { id: 'jeffrey-herlings', name: 'Jeffrey Herlings', aliases: ['Jeffrey Herlings', 'Herlings'] },
   { id: 'tim-gajser', name: 'Tim Gajser', aliases: ['Tim Gajser', 'Gajser'] },
-  { id: 'jorge-prado', name: 'Jorge Prado', aliases: ['Jorge Prado'] },
+  { id: 'jorge-prado', name: 'Jorge Prado', aliases: ['Jorge Prado'], contextRequired: true },
   { id: 'romain-febvre', name: 'Romain Febvre', aliases: ['Romain Febvre', 'Febvre'] },
   { id: 'glenn-coldenhoff', name: 'Glenn Coldenhoff', aliases: ['Glenn Coldenhoff', 'Coldenhoff'] },
   { id: 'kay-de-wolf', name: 'Kay de Wolf', aliases: ['Kay de Wolf', 'de Wolf'] },
   { id: 'lucas-coenen', name: 'Lucas Coenen', aliases: ['Lucas Coenen'] },
   { id: 'sacha-coenen', name: 'Sacha Coenen', aliases: ['Sacha Coenen'] },
-  { id: 'andrea-adamo', name: 'Andrea Adamo', aliases: ['Andrea Adamo'] },
+  { id: 'andrea-adamo', name: 'Andrea Adamo', aliases: ['Andrea Adamo'], contextRequired: true },
   { id: 'simon-laengenfelder', name: 'Simon Längenfelder', aliases: ['Simon Längenfelder', 'Laengenfelder', 'Langenfelder'] },
   { id: 'liam-everts', name: 'Liam Everts', aliases: ['Liam Everts'] },
   { id: 'mattia-guadagnini', name: 'Mattia Guadagnini', aliases: ['Mattia Guadagnini', 'Guadagnini'] },
@@ -247,6 +250,46 @@ export const SERIES = Object.freeze([
   { id: 'wsx', name: 'World Supercross', aliases: ['World Supercross', 'WSX'] },
   { id: 'loretta', name: "Loretta Lynn's", aliases: ["Loretta Lynn's", 'Lorettas', 'Loretta'] },
   { id: 'world-vet', name: 'World Vet Championship', aliases: ['World Vet'] },
+]);
+
+/**
+ * Terms that place a story inside motocross rather than another field. They are
+ * the series, governing bodies, venues, and manufacturers already configured,
+ * plus the vocabulary a race report uses. A common-name rider is only counted
+ * when one of these appears in the title or summary, so a novelist, football
+ * player, or designer with the same name cannot inherit the rider's heat.
+ */
+export const MOTOCROSS_CONTEXT = Object.freeze([
+  ...new Set([
+    'motocross',
+    'supercross',
+    'supermotocross',
+    'smx',
+    'mxgp',
+    'mx2',
+    'mx1',
+    'mxon',
+    'arenacross',
+    'ausx',
+    'wsx',
+    'dirt bike',
+    'dirtbike',
+    'holeshot',
+    'gate drop',
+    'main event',
+    'podium',
+    'race',
+    'racing',
+    'rider',
+    'riders',
+    'paddock',
+    'motocross track',
+    'supercross track',
+    ...REGION_RULES.us,
+    ...REGION_RULES.world,
+    ...BRANDS.map((brand) => brand.name),
+    ...SERIES.flatMap((series) => series.aliases || [series.name]),
+  ]),
 ]);
 
 export const WATCHLIST = Object.freeze([
