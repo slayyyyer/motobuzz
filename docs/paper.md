@@ -309,13 +309,17 @@ Some full names are common enough to belong to someone else. `Pierce Brown` is a
 novelist, `Andrea Adamo` a designer, and `Justin Cooper` an actor; a full-name match alone
 would put their stories into rider heat. Those entries carry `contextRequired`, so the
 classifier and the optional labelling pass only accept the name when the title or summary
-also contains a motocross term — a configured series, governing body, venue, manufacturer, or
-race vocabulary — or the outlet is a known motocross publication. Outlets are identified by
+also contains a motocross term — a configured series, governing body, venue, or race
+vocabulary — or the outlet is a known motocross publication. Outlets are identified by
 the real publisher hostname or a configured source id, not by the publisher's display name. The
 outlet rule matters for interviews such as “Five Questions: Jorge Prado” on MotoOnline, where
 the headline contains no keyword but the outlet itself is unambiguous. A distinctive name such
 as `Jalek Swoll` is unaffected. `npm run riders:audit` repeats the check against recent
 headlines and exits non-zero if a motocross outlet's story is being dropped.
+
+Brands and teams carry the same `contextRequired` flag. A manufacturer name is not itself
+context, because Honda also makes cars; “2027 Honda Civic review” must not count as motocross.
+The brand only appears when the story also carries a motocross term or comes from an MX outlet.
 
 **Region.** American-series words (venues, `supercross`, `ama`, `motocross nationals`) against
 world-championship words (`mxgp`, `fim`, `mxon`, and European venues). Both present is `mixed`
@@ -561,7 +565,7 @@ one of them is about the sport.
 
 ## 13. Tests and reproducibility
 
-`npm test` runs 76 tests on Node's built-in assertions, with no test framework and no
+`npm test` runs 77 tests on Node's built-in assertions, with no test framework and no
 dependencies: text decoding and normalization, RSS and Atom parsing, malformed-versus-empty
 diagnostics, the YouTube channel feed and page extractor against fixtures, classifier and alias
 safety (including the surnames that must *not* match), decay, momentum, saturation, bucket

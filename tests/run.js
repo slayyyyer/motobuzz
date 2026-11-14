@@ -458,7 +458,7 @@ test('a good digest comes back cited and never touches the records', async () =>
 /* ---------- classification ---------- */
 
 test('classifies a signing story and finds the rider', () => {
-  const labels = classify({ title: 'Ken Roczen signs a two-year extension with Suzuki', summary: null });
+  const labels = classify({ title: 'Ken Roczen signs a two-year extension with Suzuki for 2027 Supercross', summary: null });
   assert.ok(labels.topics.includes('signings'));
   assert.ok(labels.entities.includes('ken-roczen'));
   assert.ok(labels.entities.includes('suzuki'));
@@ -544,6 +544,27 @@ test('common-name riders require motocross context', () => {
   assert.ok(distinctive.entities.includes('jalek-swoll'));
 });
 
+test('brands and teams need motocross context', () => {
+  const carReview = classify({ title: '2027 Honda Civic review: a practical sedan', summary: null });
+  assert.ok(!carReview.entities.includes('honda'));
+  assert.ok(!carReview.entities.includes('honda-hrc'));
+
+  const energyDrink = classify({ title: 'Red Bull KTM launches a new energy drink', summary: null });
+  assert.ok(!energyDrink.entities.includes('red-bull-ktm'));
+  assert.ok(!energyDrink.entities.includes('ktm'));
+
+  const motocross = classify({
+    title: 'Honda HRC signs a new rider for the 2027 Supercross season',
+    summary: null,
+  });
+  assert.ok(motocross.entities.includes('honda'));
+  assert.ok(motocross.entities.includes('honda-hrc'));
+
+  const team = classify({ title: 'Red Bull KTM reveals its 2027 Supercross roster', summary: null });
+  assert.ok(team.entities.includes('red-bull-ktm'));
+  assert.ok(team.entities.includes('ktm'));
+});
+
 test('legitimate MX headlines survive without a context keyword in the title', () => {
   const fixtures = [
     { id: 'jorge-prado', title: 'Five Questions: Jorge Prado', publisherUrl: 'https://www.motoonline.com.au/' },
@@ -578,7 +599,7 @@ test('motocross context comes from a real domain or configured source id', () =>
   assert.ok(!isMotocrossOutlet({ sourceId: 'gnews-riders-5' }));
 });
 
-test('the LLM pass cannot attach a common-name rider without motocross context', () => {
+test('the LLM pass cannot attach a gated entity without motocross context', () => {
   const book = [{ id: 'book', title: 'Pierce Brown wraps up his Red Rising series', summary: null, topics: [], entities: [] }];
   assert.equal(applyEnrichment(book, [{ id: 'book', entities: ['pierce-brown'] }]), 0);
   assert.deepEqual(book[0].entities, []);
@@ -588,6 +609,16 @@ test('the LLM pass cannot attach a common-name rider without motocross context',
   ];
   assert.equal(applyEnrichment(race, [{ id: 'race', entities: ['pierce-brown'] }]), 1);
   assert.deepEqual(race[0].entities, ['pierce-brown']);
+
+  const car = [{ id: 'car', title: '2027 Honda Civic review: a practical sedan', summary: null, topics: [], entities: [] }];
+  assert.equal(applyEnrichment(car, [{ id: 'car', entities: ['honda', 'honda-hrc'] }]), 0);
+  assert.deepEqual(car[0].entities, []);
+
+  const motocross = [
+    { id: 'mx', title: 'Honda HRC signs a rider for Supercross', summary: null, topics: [], entities: [] },
+  ];
+  assert.equal(applyEnrichment(motocross, [{ id: 'mx', entities: ['honda', 'honda-hrc'] }]), 1);
+  assert.deepEqual(motocross[0].entities, ['honda', 'honda-hrc']);
 });
 
 test('regions split American and world series', () => {

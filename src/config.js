@@ -215,30 +215,30 @@ export const RIDERS = Object.freeze([
 ]);
 
 export const BRANDS = Object.freeze([
-  { id: 'ktm', name: 'KTM', aliases: ['KTM'] },
-  { id: 'honda', name: 'Honda', aliases: ['Honda', 'HRC'] },
-  { id: 'kawasaki', name: 'Kawasaki', aliases: ['Kawasaki'] },
-  { id: 'yamaha', name: 'Yamaha', aliases: ['Yamaha', 'Yam'] },
-  { id: 'suzuki', name: 'Suzuki', aliases: ['Suzuki'] },
-  { id: 'husqvarna', name: 'Husqvarna', aliases: ['Husqvarna', 'Husky'] },
-  { id: 'gasgas', name: 'GASGAS', aliases: ['GASGAS', 'Gas Gas'] },
-  { id: 'triumph', name: 'Triumph', aliases: ['Triumph'] },
-  { id: 'ducati', name: 'Ducati', aliases: ['Ducati'] },
-  { id: 'stark', name: 'Stark Future', aliases: ['Stark Future', 'Stark Varg'] },
-  { id: 'beta', name: 'Beta', aliases: ['Beta Motorcycles', 'Beta Racing'] },
-  { id: 'fantic', name: 'Fantic', aliases: ['Fantic'] },
+  { id: 'ktm', name: 'KTM', aliases: ['KTM'], contextRequired: true },
+  { id: 'honda', name: 'Honda', aliases: ['Honda', 'HRC'], contextRequired: true },
+  { id: 'kawasaki', name: 'Kawasaki', aliases: ['Kawasaki'], contextRequired: true },
+  { id: 'yamaha', name: 'Yamaha', aliases: ['Yamaha', 'Yam'], contextRequired: true },
+  { id: 'suzuki', name: 'Suzuki', aliases: ['Suzuki'], contextRequired: true },
+  { id: 'husqvarna', name: 'Husqvarna', aliases: ['Husqvarna', 'Husky'], contextRequired: true },
+  { id: 'gasgas', name: 'GASGAS', aliases: ['GASGAS', 'Gas Gas'], contextRequired: true },
+  { id: 'triumph', name: 'Triumph', aliases: ['Triumph'], contextRequired: true },
+  { id: 'ducati', name: 'Ducati', aliases: ['Ducati'], contextRequired: true },
+  { id: 'stark', name: 'Stark Future', aliases: ['Stark Future', 'Stark Varg'], contextRequired: true },
+  { id: 'beta', name: 'Beta', aliases: ['Beta Motorcycles', 'Beta Racing'], contextRequired: true },
+  { id: 'fantic', name: 'Fantic', aliases: ['Fantic'], contextRequired: true },
 ]);
 
 export const TEAMS = Object.freeze([
-  { id: 'red-bull-ktm', name: 'Red Bull KTM', aliases: ['Red Bull KTM'] },
-  { id: 'honda-hrc', name: 'Honda HRC', aliases: ['Honda HRC', 'HRC Honda', 'Team Honda'] },
-  { id: 'monster-kawasaki', name: 'Monster Energy Kawasaki', aliases: ['Monster Energy Kawasaki', 'Monster Kawasaki'] },
-  { id: 'star-racing-yamaha', name: 'Star Racing Yamaha', aliases: ['Star Racing', 'Monster Energy Yamaha Star Racing'] },
-  { id: 'rockstar-husqvarna', name: 'Rockstar Energy Husqvarna', aliases: ['Rockstar Energy Husqvarna', 'Rockstar Husqvarna'] },
-  { id: 'tld-gasgas', name: 'Troy Lee Designs GASGAS', aliases: ['Troy Lee Designs', 'TLD GASGAS', 'TLD Red Bull GASGAS'] },
-  { id: 'ecstar-suzuki', name: 'Progressive ECSTAR Suzuki', aliases: ['ECSTAR Suzuki', 'Progressive Suzuki', 'Suzuki Factory Racing'] },
-  { id: 'nestaan-husqvarna', name: 'Nestaan Husqvarna', aliases: ['Nestaan'] },
-  { id: 'kawasaki-racing-team', name: 'Kawasaki Racing Team', aliases: ['Kawasaki Racing Team', 'KRT'] },
+  { id: 'red-bull-ktm', name: 'Red Bull KTM', aliases: ['Red Bull KTM'], contextRequired: true },
+  { id: 'honda-hrc', name: 'Honda HRC', aliases: ['Honda HRC', 'HRC Honda', 'Team Honda'], contextRequired: true },
+  { id: 'monster-kawasaki', name: 'Monster Energy Kawasaki', aliases: ['Monster Energy Kawasaki', 'Monster Kawasaki'], contextRequired: true },
+  { id: 'star-racing-yamaha', name: 'Star Racing Yamaha', aliases: ['Star Racing', 'Monster Energy Yamaha Star Racing'], contextRequired: true },
+  { id: 'rockstar-husqvarna', name: 'Rockstar Energy Husqvarna', aliases: ['Rockstar Energy Husqvarna', 'Rockstar Husqvarna'], contextRequired: true },
+  { id: 'tld-gasgas', name: 'Troy Lee Designs GASGAS', aliases: ['Troy Lee Designs', 'TLD GASGAS', 'TLD Red Bull GASGAS'], contextRequired: true },
+  { id: 'ecstar-suzuki', name: 'Progressive ECSTAR Suzuki', aliases: ['ECSTAR Suzuki', 'Progressive Suzuki', 'Suzuki Factory Racing'], contextRequired: true },
+  { id: 'nestaan-husqvarna', name: 'Nestaan Husqvarna', aliases: ['Nestaan'], contextRequired: true },
+  { id: 'kawasaki-racing-team', name: 'Kawasaki Racing Team', aliases: ['Kawasaki Racing Team', 'KRT'], contextRequired: true },
 ]);
 
 export const SERIES = Object.freeze([
@@ -254,10 +254,11 @@ export const SERIES = Object.freeze([
 
 /**
  * Terms that place a story inside motocross rather than another field. They are
- * the series, governing bodies, venues, and manufacturers already configured,
- * plus the vocabulary a race report uses. A common-name rider is only counted
- * when one of these appears in the title or summary, so a novelist, football
- * player, or designer with the same name cannot inherit the rider's heat.
+ * the series, governing bodies, venues, and vocabulary a race report uses.
+ * Manufacturers and teams are deliberately absent: they are gated entities
+ * themselves, because a car review saying "Honda" would otherwise make itself
+ * a motocross story. A context-gated entity is only counted when one of these
+ * terms appears in the title or summary, or the outlet is a known MX source.
  */
 export const MOTOCROSS_CONTEXT = Object.freeze([
   ...new Set([
@@ -294,7 +295,6 @@ export const MOTOCROSS_CONTEXT = Object.freeze([
     'supercross track',
     ...REGION_RULES.us,
     ...REGION_RULES.world,
-    ...BRANDS.map((brand) => brand.name),
     ...SERIES.flatMap((series) => series.aliases || [series.name]),
   ]),
 ]);
