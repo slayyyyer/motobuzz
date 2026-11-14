@@ -332,16 +332,15 @@ export const MOTOCROSS_ENTITY_CONTEXT = Object.freeze([
 ]);
 
 /**
- * Product and category terms that veto a gated brand or team even when a
- * headline contains a generic MX-sounding word. These are deliberately about
- * the product, not the manufacturer: a Civic review is still a car story even
- * if it says "motocross-inspired".
+ * Product and model terms specific enough to veto a gated brand or team. Keep
+ * this list narrow: generic English words such as pilot, passport, marine,
+ * aircraft, and piano can appear in legitimate race coverage and must not veto
+ * a story on their own.
  */
 export const NON_MOTOCROSS_PRODUCTS = Object.freeze([
   'car review',
   'sedan',
   'suv',
-  'crossover',
   'hatchback',
   'coupe',
   'minivan',
@@ -350,9 +349,6 @@ export const NON_MOTOCROSS_PRODUCTS = Object.freeze([
   'accord',
   'cr-v',
   'hr-v',
-  'pilot',
-  'passport',
-  'odyssey',
   'ridgeline',
   'integra',
   'nsx',
@@ -362,13 +358,7 @@ export const NON_MOTOCROSS_PRODUCTS = Object.freeze([
   'goldwing',
   'super cub',
   'pcx',
-  'grom',
-  'monkey',
-  'dax',
-  'rebel',
   'cbr',
-  'forza',
-  'navi',
   'adventure bike',
   'adventure bikes',
   'e-bike',
@@ -382,7 +372,6 @@ export const NON_MOTOCROSS_PRODUCTS = Object.freeze([
   'road bike',
   'gravel bike',
   'outboard',
-  'marine',
   'jet ski',
   'waverunner',
   'seadoo',
@@ -394,14 +383,9 @@ export const NON_MOTOCROSS_PRODUCTS = Object.freeze([
   'four-wheeler',
   'four wheeler',
   'quad bike',
-  'generator',
   'lawn mower',
-  'mower',
   'snowblower',
   'hondajet',
-  'aircraft',
-  'piano',
-  'audio equipment',
 ]);
 
 export const WATCHLIST = Object.freeze([

@@ -50,7 +50,10 @@ export function buildMatchers() {
 
   const context = MOTOCROSS_CONTEXT.map(compileAlias).filter(Boolean);
   const entityContext = MOTOCROSS_ENTITY_CONTEXT.map(compileAlias).filter(Boolean);
-  const nonMotocrossProducts = NON_MOTOCROSS_PRODUCTS.map(compileAlias).filter(Boolean);
+  const nonMotocrossProducts = NON_MOTOCROSS_PRODUCTS.map((term) => ({
+    term,
+    pattern: compileAlias(term),
+  })).filter((entry) => entry.pattern);
 
   return { entities, topics, region, context, entityContext, nonMotocrossProducts };
 }
@@ -69,10 +72,17 @@ export function hasMotocrossEntityContext(text) {
   return MATCHERS.entityContext.some((pattern) => pattern.test(normalized));
 }
 
+/** Which non-motocross product terms appear in the text (for audit reporting). */
+export function matchedNonMotocrossProducts(text) {
+  const normalized = normalizeForMatch(text || '');
+  return MATCHERS.nonMotocrossProducts
+    .filter((entry) => entry.pattern.test(normalized))
+    .map((entry) => entry.term);
+}
+
 /** True when the text names a clearly non-motocross product or category. */
 export function hasNonMotocrossProduct(text) {
-  const normalized = normalizeForMatch(text || '');
-  return MATCHERS.nonMotocrossProducts.some((pattern) => pattern.test(normalized));
+  return matchedNonMotocrossProducts(text).length > 0;
 }
 
 const DOMAIN_SET = new Set(MOTOCROSS_DOMAINS);

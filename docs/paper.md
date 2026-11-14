@@ -316,14 +316,17 @@ outlet rule matters for interviews such as “Five Questions: Jorge Prado” on 
 the headline contains no keyword but the outlet itself is unambiguous. A distinctive name such
 as `Jalek Swoll` is unaffected. `npm run riders:audit` repeats the check against recent
 headlines for every gated rider, brand, and team, and exits non-zero if a non-motocross
-mention still counts or a motocross mention is dropped.
+mention still counts, a motocross mention is dropped, or a motocross mention is dropped
+only because a negative product term matched.
 
 Brands and teams carry the same `contextRequired` flag, but use a stricter MX-only context tier:
 explicit series, venues, dirt-bike vocabulary, or a known MX outlet. Generic words such as
 `bike`, `racing`, and `outdoor` do not qualify, because Honda also makes cars, bicycles, and
-marine engines. A non-MX product term — Civic, Africa Twin, e-MTB, ATV, outboard — vetoes the
-hit even when the headline says "motocross-inspired". The brand or team therefore appears only
-when the story is genuinely MX or comes from an MX outlet.
+marine engines. A specific non-MX product term — Civic, Africa Twin, e-MTB, ATV, outboard —
+vetoes the hit even when the headline says "motocross-inspired". The list is deliberately narrow:
+generic words such as pilot, passport, marine, aircraft, and piano are not vetoes because they
+can appear in legitimate race coverage. The brand or team therefore appears only when the story
+is genuinely MX or comes from an MX outlet.
 
 **Region.** American-series words (venues, `supercross`, `ama`, `motocross nationals`) against
 world-championship words (`mxgp`, `fim`, `mxon`, and European venues). Both present is `mixed`

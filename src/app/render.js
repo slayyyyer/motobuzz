@@ -524,8 +524,9 @@ function renderMethod(state) {
       story's title or summary actually contains it, and ambiguous surnames are only matched as full names. Common
       names such as Pierce Brown also need a motocross term in the story or an outlet whose domain or source is a
       known motocross publication, so a novelist or football player with the same name cannot inherit the rider's buzz.
-      Brands and teams need stricter MX-only context, and non-MX products such as a Civic or an e-MTB veto the hit,
-      so a car review mentioning Honda does not count as motocross.</p>
+      Brands and teams need stricter MX-only context, and specific non-MX products such as a Civic or an e-MTB veto
+      the hit, so a car review mentioning Honda does not count as motocross. Generic words such as pilot or marine do
+      not veto real race coverage.</p>
     </div>
   </div>`;
 }

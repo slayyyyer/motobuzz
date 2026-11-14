@@ -10,8 +10,8 @@ import {
   classify,
   hasMotocrossContext,
   hasMotocrossEntityContext,
-  hasNonMotocrossProduct,
   isMotocrossOutlet,
+  matchedNonMotocrossProducts,
 } from './classify.js';
 import { normalizeForMatch } from '../lib/text.js';
 
@@ -34,6 +34,7 @@ export function matchesName(title, target) {
  *   kept            — entity present, motocross context present
  *   non-mx-counted  — entity present, no motocross context (false positive)
  *   near-miss       — entity absent, motocross context present (dropped story)
+ *   negative-veto   — entity absent, MX context present, but a product term vetoed it
  *   dropped         — entity absent, no motocross context (correctly ignored)
  *
  * `labels` and `hasContext` can be supplied by tests to exercise the reporting
@@ -44,16 +45,20 @@ export function inspectRecord(record, target, { labels, hasContext } = {}) {
 
   const storyText = `${record?.title || ''} ${record?.summary || ''}`;
   const outlet = isMotocrossOutlet(record);
-  const context =
-    hasContext ??
-    (target.kind === 'brand' || target.kind === 'team'
-      ? (hasMotocrossEntityContext(storyText) || outlet) && !hasNonMotocrossProduct(storyText)
-      : hasMotocrossContext(storyText) || outlet);
+  const gatedUnit = target.kind === 'brand' || target.kind === 'team';
+  const positiveContext = gatedUnit
+    ? hasMotocrossEntityContext(storyText) || outlet
+    : hasMotocrossContext(storyText) || outlet;
+  const negativeTerms = gatedUnit ? matchedNonMotocrossProducts(storyText) : [];
+  const context = hasContext ?? (positiveContext && negativeTerms.length === 0);
   const classified = labels ?? classify(record);
   const counted = Array.isArray(classified?.entities) && classified.entities.includes(target.id);
 
   if (counted) {
-    return { status: context ? 'kept' : 'non-mx-counted', counted: true, context };
+    return { status: context ? 'kept' : 'non-mx-counted', counted: true, context, negativeTerms };
   }
-  return { status: context ? 'near-miss' : 'dropped', counted: false, context };
+  if (positiveContext && negativeTerms.length > 0) {
+    return { status: 'negative-veto', counted: false, context, negativeTerms };
+  }
+  return { status: context ? 'near-miss' : 'dropped', counted: false, context, negativeTerms };
 }

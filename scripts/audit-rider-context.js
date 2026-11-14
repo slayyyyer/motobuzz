@@ -3,10 +3,11 @@
  * Context audit for every gated entity: riders, brands, and teams marked
  * `contextRequired`.
  *
- * Two failures are reported:
+ * Three failures are reported:
  *   - a non-motocross story (for example a Honda car review) that still counts
  *     the gated brand or team
  *   - a motocross story that names the brand or team but drops it
+ *   - a motocross story dropped only because a negative product term matched
  *
  * The outlet check uses each record's configured source id or the hostname
  * behind its publisher URL, never the display name.
@@ -15,7 +16,7 @@
  *   npm run riders:audit -- --days 90
  *   npm run riders:audit -- --local-only
  *
- * Exits 1 when either failure is found or a requested query cannot complete.
+ * Exits 1 when any failure is found or a requested query cannot complete.
  */
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -64,11 +65,12 @@ async function main() {
   const stats = new Map(
     targets.map((target) => [
       target.id,
-      { checked: 0, kept: 0, dropped: 0, nonMx: 0, nearMiss: 0 },
+      { checked: 0, kept: 0, dropped: 0, nonMx: 0, nearMiss: 0, negativeVeto: 0 },
     ]),
   );
   const falsePositives = [];
   const nearMisses = [];
+  const negativeVetoes = [];
   const failures = [];
   const seen = new Set();
 
@@ -110,6 +112,18 @@ async function main() {
         outlet: outletLabel(record),
         url: record.url || record.publisherUrl || '',
         origin,
+      });
+    } else if (outcome.status === 'negative-veto') {
+      counts.negativeVeto += 1;
+      negativeVetoes.push({
+        targetId: target.id,
+        target: target.name,
+        kind: target.kind,
+        title: record.title,
+        outlet: outletLabel(record),
+        url: record.url || record.publisherUrl || '',
+        origin,
+        negativeTerms: outcome.negativeTerms,
       });
     }
   }
@@ -185,7 +199,7 @@ async function main() {
         counts.kept,
       ).padStart(3)} · dropped ${String(counts.dropped).padStart(3)} · non-MX counted ${String(counts.nonMx).padStart(
         2,
-      )} · MX near misses ${counts.nearMiss}\n`,
+      )} · MX near misses ${counts.nearMiss} · negative vetoes ${counts.negativeVeto}\n`,
     );
   }
 
@@ -211,12 +225,24 @@ async function main() {
     process.stdout.write('No motocross near misses.\n');
   }
 
+  if (negativeVetoes.length > 0) {
+    process.stdout.write('\nMX-context stories dropped by a negative product term:\n');
+    for (const entry of negativeVetoes) {
+      process.stdout.write(`  - ${entry.target} [${entry.kind}] | ${entry.outlet} | ${entry.title}\n`);
+      if (entry.url) process.stdout.write(`    ${entry.url}\n`);
+      process.stdout.write(`    negative terms: ${entry.negativeTerms.join(', ')} (${entry.origin})\n`);
+    }
+  } else {
+    process.stdout.write('No negative-only vetoes.\n');
+  }
+
   if (failures.length > 0) {
     process.stdout.write('\nQueries that could not be completed:\n');
     for (const failure of failures) process.stdout.write(`  - ${failure}\n`);
   }
 
-  process.exitCode = falsePositives.length > 0 || nearMisses.length > 0 || failures.length > 0 ? 1 : 0;
+  process.exitCode =
+    falsePositives.length > 0 || nearMisses.length > 0 || negativeVetoes.length > 0 || failures.length > 0 ? 1 : 0;
 }
 
 main().catch((error) => {

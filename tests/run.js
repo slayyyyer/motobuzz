@@ -563,6 +563,15 @@ test('brands and teams need motocross context', () => {
   });
   assert.ok(!carAtMotocross.entities.includes('honda'));
 
+  for (const genericWord of ['pilot', 'passport', 'marine', 'aircraft', 'piano']) {
+    const story = classify({
+      title: `Honda HRC wins Supercross with a ${genericWord} program`,
+      summary: null,
+    });
+    assert.ok(story.entities.includes('honda'), `${genericWord} must not veto Honda`);
+    assert.ok(story.entities.includes('honda-hrc'), `${genericWord} must not veto Honda HRC`);
+  }
+
   const energyDrink = classify({ title: 'Red Bull KTM launches a new energy drink', summary: null });
   assert.ok(!energyDrink.entities.includes('red-bull-ktm'));
   assert.ok(!energyDrink.entities.includes('ktm'));
@@ -592,7 +601,7 @@ test('the context audit catches non-MX brand hits and dropped MX brand/team stor
     title: 'Honda Civic Type R review: a motocross-inspired car',
     summary: null,
   };
-  assert.equal(inspectRecord(carWithMotocross, honda).status, 'dropped');
+  assert.equal(inspectRecord(carWithMotocross, honda).status, 'negative-veto');
   assert.equal(
     inspectRecord(carWithMotocross, honda, { labels: { entities: ['honda'] } }).status,
     'non-mx-counted',
@@ -605,6 +614,11 @@ test('the context audit catches non-MX brand hits and dropped MX brand/team stor
     inspectRecord(motocross, hondaHrc, { labels: { entities: [] }, hasContext: true }).status,
     'near-miss',
   );
+
+  const civicCenter = { title: 'Honda HRC wins Supercross at the Civic Center', summary: null };
+  const veto = inspectRecord(civicCenter, hondaHrc);
+  assert.equal(veto.status, 'negative-veto');
+  assert.deepEqual(veto.negativeTerms, ['civic']);
 });
 
 test('legitimate MX headlines survive without a context keyword in the title', () => {
