@@ -38,6 +38,7 @@ import { buildSourceRows, dedupeRecords, retainPrevious } from '../src/engine/pi
 import { buildSnapshot, stableId } from '../src/engine/score.js';
 import { validateCache } from '../src/engine/validate.js';
 import { enrichLabels } from '../src/engine/enrich.js';
+import { generateDigest } from '../src/engine/digest.js';
 
 const CONTEXT_KINDS = new Set(['brand', 'team', 'series']);
 
@@ -260,6 +261,10 @@ async function main() {
 
   const snapshot = buildSnapshot(kept, { now });
 
+  // Optional and post-score: the digest reads the scored records and never
+  // feeds back into their energy, the headline or the tables.
+  const digest = await generateDigest(snapshot.items, { now });
+
   const items = snapshot.items;
   const itemCounts = new Map();
   for (const item of items) {
@@ -297,6 +302,12 @@ async function main() {
         labelled: enrichment.labelled,
         error: enrichment.error,
       },
+      digest: {
+        configured: digest.configured,
+        model: digest.model,
+        claims: digest.claimCount,
+        error: digest.error,
+      },
       duplicatesDropped: duplicates,
       riderQueryOffTarget: offTarget,
       recordsPruned: pruned,
@@ -310,6 +321,7 @@ async function main() {
     region: snapshot.region,
     sources,
     items,
+    digest: digest.digest,
   };
 
   const statusWidth = 12;
@@ -357,6 +369,10 @@ async function main() {
   if (enrichment.configured && enrichment.requested > 0) {
     const detail = enrichment.error ? ` (${enrichment.error})` : '';
     log(`  enrichment: ${enrichment.labelled}/${enrichment.requested} records labelled via ${enrichment.model}${detail}`);
+  }
+  if (digest.configured) {
+    const detail = digest.error ? ` (${digest.error})` : '';
+    log(`  digest: ${digest.claimCount} cited claim${digest.claimCount === 1 ? '' : 's'} via ${digest.model}${detail}`);
   }
   log('');
 

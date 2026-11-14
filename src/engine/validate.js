@@ -75,6 +75,26 @@ export function validateSource(raw, now) {
   };
 }
 
+function validateDigest(raw, recordIds) {
+  if (!isPlainObject(raw)) return null;
+  const claims = [];
+  for (const claim of Array.isArray(raw.claims) ? raw.claims.slice(0, 8) : []) {
+    if (!isPlainObject(claim) || typeof claim.text !== 'string') continue;
+    const text = claim.text.trim();
+    if (!text || text.length > 240) continue;
+    const ids = [...new Set((Array.isArray(claim.recordIds) ? claim.recordIds : []).filter((id) => recordIds.has(id)))].slice(0, 6);
+    if (ids.length === 0) continue;
+    claims.push({ text, recordIds: ids });
+    if (claims.length === 4) break;
+  }
+  if (claims.length === 0) return null;
+  return {
+    model: typeof raw.model === 'string' ? raw.model.slice(0, 60) : null,
+    generatedAt: finiteNumber(raw.generatedAt) ? raw.generatedAt : null,
+    claims,
+  };
+}
+
 function validateBuckets(raw) {
   if (!Array.isArray(raw)) return [];
   return raw
@@ -214,6 +234,8 @@ export function validateCache(raw, options = {}) {
   if (items.length === 0) reasons.push('Every record was rejected.');
 
   const sources = Array.isArray(raw.sources) ? raw.sources.map((entry) => validateSource(entry, now)).filter(Boolean) : [];
+  // A digest may only cite records that survived validation.
+  const digest = validateDigest(raw.digest, new Set(items.map((item) => item.id).filter(Boolean)));
 
   return {
     ok: items.length > 0,
@@ -237,6 +259,7 @@ export function validateCache(raw, options = {}) {
         : { us: 0, world: 0, mixed: 0, unknown: 0 },
       sources,
       items: items.sort((a, b) => b.weight - a.weight),
+      digest,
     },
   };
 }

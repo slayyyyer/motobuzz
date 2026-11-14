@@ -11,6 +11,7 @@ import { parseFeed, parseDate } from '../src/adapters/feed.js';
 import { extractChannelVideos, videosFromFeed } from '../src/adapters/youtube.js';
 import { buildAtomFeed } from '../src/engine/feed.js';
 import { saveDiagnostics } from '../src/engine/diagnostics.js';
+import { applyDigest, generateDigest, parseDigest } from '../src/engine/digest.js';
 import { coverageNoteText } from '../src/app/render.js';
 import { buildSourceRows, dedupeRecords, retainPrevious } from '../src/engine/pipeline.js';
 import {
@@ -309,6 +310,73 @@ test('a throttled request is retried once, with Z.ai thinking switched off', asy
   assert.deepEqual(bodies[0].thinking, { type: 'disabled' });
   assert.equal(bodies[0].model, 'glm-4.5-flash');
   assert.equal(bodies[0].temperature, 0);
+});
+
+/* ---------- optional digest ---------- */
+
+test('a digest keeps only claims that cite records from the build', () => {
+  const records = [{ id: 'a' }, { id: 'b' }];
+  const claims = applyDigest(
+    [
+      { text: 'Ken Roczen has extended with Suzuki for another season.', recordIds: ['a'] },
+      { text: 'A claim that cites a record that is not in the build.', recordIds: ['ghost'] },
+      { text: 'Another claim, citing two records that exist here.', recordIds: ['a', 'b', 'a'] },
+      { text: 'Short.', recordIds: ['a'] },
+    ],
+    records,
+  );
+  assert.equal(claims.length, 2);
+  assert.deepEqual(claims[0].recordIds, ['a']);
+  assert.deepEqual(claims[1].recordIds, ['a', 'b']);
+});
+
+test('digest JSON is read from an envelope or a code fence', () => {
+  const envelope = parseDigest('{"claims":[{"text":"A claim here.","recordIds":["a"]}]}');
+  assert.equal(envelope.length, 1);
+  const fenced = parseDigest('```json\n[{"text":"A claim here.","recordIds":["a"]}]\n```');
+  assert.equal(fenced.length, 1);
+  assert.deepEqual(parseDigest('not json at all'), []);
+});
+
+test('no key means no digest, and a failing call leaves the score alone', async () => {
+  const records = [{ id: 'a', title: 'Ken Roczen extends with Suzuki', topics: [], entities: [] }];
+  const off = await generateDigest(records, { env: {} });
+  assert.equal(off.configured, false);
+  assert.equal(off.digest, null);
+
+  const failing = async () => ({ ok: false, status: 500 });
+  const report = await generateDigest(records, {
+    env: { LLM_API_KEY: 'k', LLM_API_BASE: 'http://127.0.0.1:8799' },
+    fetchImpl: failing,
+  });
+  assert.equal(report.digest, null);
+  assert.match(report.error, /500/);
+  assert.equal(records[0].weight, undefined);
+});
+
+test('a good digest comes back cited and never touches the records', async () => {
+  const records = [
+    { id: 'a', title: 'Ken Roczen extends with Suzuki for 2027', topics: ['signings'], entities: ['ken-roczen'] },
+  ];
+  const fake = async () => ({
+    ok: true,
+    json: async () => ({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              claims: [{ text: 'Ken Roczen has extended with Suzuki for 2027.', recordIds: ['a'] }],
+            }),
+          },
+        },
+      ],
+    }),
+  });
+  const report = await generateDigest(records, { env: { LLM_API_KEY: 'k' }, fetchImpl: fake });
+  assert.equal(report.claimCount, 1);
+  assert.equal(report.digest.model, 'glm-4.5-flash');
+  assert.deepEqual(report.digest.claims[0].recordIds, ['a']);
+  assert.equal(records[0].weight, undefined);
 });
 
 /* ---------- classification ---------- */
@@ -724,6 +792,21 @@ test('rejects a cache with no buzz block', () => {
   const cache = validCache();
   delete cache.buzz;
   assert.equal(validateCache(cache, { now: NOW }).ok, false);
+});
+
+test('a digest citing a record that is not in the cache is trimmed away', () => {
+  const cache = validCache();
+  cache.digest = {
+    model: 'test',
+    generatedAt: NOW,
+    claims: [
+      { text: 'A valid claim about the story in the cache.', recordIds: [cache.items[0].id] },
+      { text: 'A claim about a record that is not here.', recordIds: ['ghost'] },
+    ],
+  };
+  const result = validateCache(cache, { now: NOW });
+  assert.equal(result.cache.digest.claims.length, 1);
+  assert.deepEqual(result.cache.digest.claims[0].recordIds, [cache.items[0].id]);
 });
 
 test('unknown source statuses are discarded', () => {

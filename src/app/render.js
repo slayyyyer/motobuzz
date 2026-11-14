@@ -465,6 +465,13 @@ function renderMethod(state) {
               )})${build.enrichment.error ? `, ${esc(build.enrichment.error)}` : ''}.`
             : 'No LLM labels configured; topics come from the keyword lists only.'
         }</li>
+        <li>${
+          build.digest?.configured
+            ? `Digest: ${build.digest.claims} cited claim(s) from titles only (${esc(
+                build.digest.model || 'model',
+              )})${build.digest.error ? `, ${esc(build.digest.error)}` : ''}.`
+            : 'No digest configured.'
+        }</li>
         <li>${build.relay ? 'Fetched through the allowlisted relay.' : 'Fetched directly from the runner.'} ${
           build.bridge ? 'A social bridge is configured for X.' : 'X is read only through an operator-run bridge.'
         }</li>
@@ -500,7 +507,7 @@ function renderMethod(state) {
       <h3>Rules</h3>
       <ul class="note-list">
         <li>The same story is counted once, matched by URL and by normalized headline, so syndicated copies do not inflate the meter.</li>
-        <li>Topics and names come from fixed keyword and alias lists in <code>src/config.js</code>. No language model runs anywhere.</li>
+        <li>Topics and names come from fixed keyword and alias lists in <code>src/config.js</code>. The only model-written text is the labelled digest, which is cited and never feeds the score.</li>
         <li>A source that fails keeps its still-valid earlier records and is labelled cached; a genuinely empty response is labelled empty, not cached.</li>
         <li>Undated items are dropped rather than dated by guesswork.</li>
         <li>Engagement is used only where a source publishes it: YouTube view counts.</li>
@@ -518,6 +525,38 @@ function renderMethod(state) {
       different rider with the same last name cannot inherit someone else's buzz.</p>
     </div>
   </div>`;
+}
+
+/* ---------- digest ---------- */
+
+/**
+ * Model-written and labelled as such. Claims arrive already validated against
+ * the cache, and each one links to the records it cites; here they are only
+ * escaped and placed.
+ */
+function renderDigest(state) {
+  const panel = byId('digest-panel');
+  const node = byId('digest');
+  const digest = state.cache?.digest;
+  const recordById = new Map((state.cache?.items || []).map((item) => [item.id, item]));
+  const claims = (digest?.claims || []).filter((claim) => Array.isArray(claim.recordIds) && claim.recordIds.length > 0);
+
+  if (claims.length === 0) {
+    panel.hidden = true;
+    node.innerHTML = '';
+    return;
+  }
+
+  panel.hidden = false;
+  node.innerHTML = claims
+    .map((claim) => {
+      const cites = claim.recordIds
+        .map((id) => recordById.get(id))
+        .filter(Boolean)
+        .map((item) => `<a href="${esc(item.url)}" rel="noopener">${esc(item.publisher)}</a>`);
+      return `<p class="digest-claim">${esc(claim.text)} <span class="digest-cites">Sources: ${cites.join(', ')}</span></p>`;
+    })
+    .join('');
 }
 
 /* ---------- coverage ---------- */
@@ -550,6 +589,7 @@ export function render(state) {
   renderTicks();
   renderGauge(state);
   renderCoverage(state);
+  renderDigest(state);
   renderMeta(state);
   renderHistory(state);
   renderSinceLast(state);
