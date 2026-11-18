@@ -18,6 +18,11 @@ function finiteNumber(value) {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
+/** A missing or unusable value stays missing instead of being replaced. */
+function nullableNumber(value) {
+  return finiteNumber(value) ? value : null;
+}
+
 function stringList(value, limit = 12) {
   if (!Array.isArray(value)) return [];
   return value.filter((entry) => typeof entry === 'string' && entry.length > 0 && entry.length <= 80).slice(0, limit);
@@ -119,7 +124,8 @@ function validateBuzz(raw) {
     headline: raw.headline.slice(0, 400),
     headlineBasis: typeof raw.headlineBasis === 'string' ? raw.headlineBasis.slice(0, 80) : '',
     energy: finiteNumber(raw.energy) ? raw.energy : 0,
-    momentum: finiteNumber(raw.momentum) ? raw.momentum : 1,
+    // Null is a reading too: too few records to compare, so nothing is printed.
+    momentum: nullableNumber(raw.momentum),
     momentumLabel: ['rising', 'cooling', 'steady'].includes(raw.momentumLabel) ? raw.momentumLabel : 'steady',
     activeItems: finiteNumber(raw.activeItems) ? raw.activeItems : 0,
     sourcesRepresented: finiteNumber(raw.sourcesRepresented) ? raw.sourcesRepresented : 0,
@@ -152,7 +158,7 @@ function validateThreads(raw) {
       share: finiteNumber(thread.share) ? thread.share : 0,
       itemCount: finiteNumber(thread.itemCount) ? thread.itemCount : 0,
       sources: finiteNumber(thread.sources) ? thread.sources : 0,
-      momentum: finiteNumber(thread.momentum) ? thread.momentum : 1,
+      momentum: nullableNumber(thread.momentum),
       trend: ['rising', 'cooling', 'steady'].includes(thread.trend) ? thread.trend : 'steady',
       entity: isPlainObject(thread.entity) && typeof thread.entity.name === 'string' ? thread.entity : null,
       exemplar: isPlainObject(thread.exemplar) && httpsUrl(thread.exemplar.url)
@@ -185,7 +191,7 @@ function validateEntities(raw) {
       share: finiteNumber(entity.share) ? entity.share : 0,
       mentions: finiteNumber(entity.mentions) ? entity.mentions : 0,
       sources: finiteNumber(entity.sources) ? entity.sources : 0,
-      momentum: finiteNumber(entity.momentum) ? entity.momentum : 1,
+      momentum: nullableNumber(entity.momentum),
       trend: ['rising', 'cooling', 'steady'].includes(entity.trend) ? entity.trend : 'steady',
       series: Array.isArray(entity.series) ? entity.series.filter(finiteNumber).slice(0, 12) : [],
       exemplar: isPlainObject(entity.exemplar) && httpsUrl(entity.exemplar.url)

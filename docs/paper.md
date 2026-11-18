@@ -477,6 +477,10 @@ ratio instead of a division by zero or an infinite spike from one post. Momentum
 energy — weight without decay — so it measures the arrival rate of chatter rather than
 re-decaying the past.
 
+A window with fewer than three records has no momentum at all (`null`), and the page prints no
+multiplier for it: one mention against an empty prior already computes 3.00×, which is a
+comparison with nothing on the other side.
+
 Every rider, team, brand, topic, and the room itself carries its own momentum, which is why one
 name can be cooling while the room gets louder.
 
@@ -492,7 +496,8 @@ name can be cooling while the room gets louder.
 - **Region share.** Energy by region, as fractions that sum to 1.
 - **Headline.** Composed from what is actually true of the snapshot, in a fixed order: top entity
   plus rising momentum; top entity plus cooling momentum; entity and topic together with flat
-  momentum; entity alone; topic alone; volume and spread alone. With no eligible records it says
+  momentum, or — with too few records to compare — their counts and no claim about pace; entity
+  alone; topic alone; volume and spread alone. With no eligible records it says
   so, and distinguishes "no sources answered" from "sources answered, nothing inside two days".
   Each headline carries a `headlineBasis` string, and the page prints it.
 

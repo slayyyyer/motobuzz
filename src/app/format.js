@@ -62,7 +62,3 @@ export function compactNumber(value) {
   if (number < 1_000_000) return `${(number / 1000).toFixed(number < 10_000 ? 1 : 0).replace(/\.0$/, '')}k`;
   return `${(number / 1_000_000).toFixed(1).replace(/\.0$/, '')}m`;
 }
-
-export function pluralize(count, singular, plural = `${singular}s`) {
-  return `${count} ${count === 1 ? singular : plural}`;
-}

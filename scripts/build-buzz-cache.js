@@ -327,7 +327,13 @@ async function main() {
 
   // --- report ---------------------------------------------------------------
   reportSources();
-  log(`  buzz ${snapshot.buzz.score}/100 (${snapshot.buzz.label}) · ${snapshot.buzz.activeItems} active records · momentum x${snapshot.buzz.momentum}`);
+  log(
+    `  buzz ${snapshot.buzz.score}/100 (${snapshot.buzz.label}) · ${snapshot.buzz.activeItems} active records · ${
+      Number.isFinite(snapshot.buzz.momentum)
+        ? `momentum x${snapshot.buzz.momentum}`
+        : 'momentum n/a: too few records'
+    }`,
+  );
   log(`  ${snapshot.buzz.headline}`);
   log(`  ${items.length} records written, ${duplicates} duplicates dropped, ${retained.length} carried from the previous cache`);
   if (offTopicSocial > 0) {

@@ -3,7 +3,8 @@
  * Anything that came from a feed is escaped before it is inserted.
  */
 import { BUZZ, COVERAGE, DECAY, ENTITY_BY_ID, FEED_PAGE_SIZE, TOPIC_LABELS, TOPICS, WINDOW } from '../config.js';
-import { clockTime, compactNumber, percent, pluralize, relativeTime } from './format.js';
+import { clockTime, compactNumber, percent, relativeTime } from './format.js';
+import { pluralize } from '../lib/text.js';
 
 const ARC_LENGTH = 251.33;
 const TREND_LABEL = { rising: 'rising', cooling: 'cooling', steady: 'holding' };
@@ -135,13 +136,17 @@ function renderMeta(state) {
   }
   const counts = `${buzz.counts.news} news · ${buzz.counts.social} social`;
   const momentum = buzz.momentum;
-  const momentumText = `x${momentum.toFixed(2)} ${TREND_LABEL[buzz.momentumLabel]}`;
+  const momentumPill = Number.isFinite(momentum)
+    ? `<li class="meta-pill ${trendClass(buzz.momentumLabel)}">${trendGlyph(
+        buzz.momentumLabel,
+      )} x${momentum.toFixed(2)} ${TREND_LABEL[buzz.momentumLabel]}</li>`
+    : '<li class="meta-pill">too few records to call a trend</li>';
 
   node.innerHTML = [
     `<li class="meta-pill"><b>${buzz.activeItems}</b> records / ${WINDOW.scoreHours}h</li>`,
     `<li class="meta-pill">${buzz.publishersRepresented} publishers</li>`,
     `<li class="meta-pill">${counts}</li>`,
-    `<li class="meta-pill ${trendClass(buzz.momentumLabel)}">${trendGlyph(buzz.momentumLabel)} ${momentumText}</li>`,
+    momentumPill,
     buzz.newestItemAt
       ? `<li class="meta-pill">newest ${relativeTime(buzz.newestItemAt)}</li>`
       : '<li class="meta-pill">no dated records</li>',
@@ -209,10 +214,16 @@ function renderThreads(state) {
     .map((thread) => {
       const width = Math.max(4, Math.round((thread.share / maxShare) * 100));
       const exemplar = thread.exemplar;
+      // A null momentum means the window was too thin to compare; print the
+      // records without implying a trend.
+      const momentumText = Number.isFinite(thread.momentum) ? `${thread.momentum.toFixed(2)}x` : '—';
+      const trendPill = Number.isFinite(thread.momentum)
+        ? `<span class="trend ${thread.trend}">${trendGlyph(thread.trend)} ${TREND_LABEL[thread.trend]}</span>`
+        : '';
       return `<li class="thread">
         <div class="thread-top">
           <span class="thread-title">${esc(thread.label)}</span>
-          <span class="trend ${thread.trend}">${trendGlyph(thread.trend)} ${TREND_LABEL[thread.trend]}</span>
+          ${trendPill}
         </div>
         ${thread.entity ? `<p class="thread-entity">Most named: ${esc(thread.entity.name)}</p>` : ''}
         <div class="heat-bar"><span style="width:${width}%"></span></div>
@@ -220,7 +231,7 @@ function renderThreads(state) {
           <span>${pluralize(thread.itemCount, 'record')}</span>
           <span>${pluralize(thread.sources, 'source')}</span>
           <span>${percent(thread.share)} of the buzz</span>
-          <span>${thread.momentum.toFixed(2)}x</span>
+          <span>${momentumText}</span>
         </div>
         ${
           exemplar
@@ -270,7 +281,11 @@ function renderHeat(state) {
         <span class="heat-meta">
           <span>${pluralize(entity.mentions, 'mention')}</span>
           <span>${pluralize(entity.sources, 'source')}</span>
-          <span class="${trendClass(entity.trend)}">${trendGlyph(entity.trend)} ${entity.momentum.toFixed(2)}x</span>
+          <span class="${trendClass(entity.trend)}">${
+            Number.isFinite(entity.momentum)
+              ? `${trendGlyph(entity.trend)} ${entity.momentum.toFixed(2)}x`
+              : '—'
+          }</span>
         </span>
       </div>`;
     })

@@ -15,7 +15,7 @@ import {
   TOPIC_LABELS,
   WINDOW,
 } from '../config.js';
-import { clamp, round } from '../lib/text.js';
+import { clamp, pluralize, round } from '../lib/text.js';
 
 const HALF_LIFE_MS = {
   news: DECAY.news.halfLifeHours * 3_600_000,
@@ -94,11 +94,34 @@ function bandFor(score) {
   return chosen;
 }
 
-function momentumLabelFor(ratio, recentEnergy) {
-  if (recentEnergy <= 0) return 'cooling';
+function momentumLabelFor(ratio) {
   if (ratio >= BUZZ.risingRatio) return 'rising';
   if (ratio <= BUZZ.coolingRatio) return 'cooling';
   return 'steady';
+}
+
+/**
+ * The last six hours against the six-hour average of the hours before them.
+ *
+ * A ratio needs a sample. One recent record against an empty prior already reads
+ * 3.00x, which looks like a trend but compares a single mention with nothing, so
+ * a window below the minimum reports no momentum and the page prints no
+ * multiplier rather than a number the records cannot support.
+ *
+ * With three records behind it, an empty recent window needs no special case: the
+ * ratio is then at most 0.5 ÷ 1.5, which already reads cooling.
+ */
+function momentumFor(entries, recentStart) {
+  if (entries.length < BUZZ.momentumMinimumRecords) return { momentum: null, trend: 'steady' };
+  const recent = entries
+    .filter((entry) => entry.publishedAt >= recentStart)
+    .reduce((sum, entry) => sum + entry.rawEnergy, 0);
+  const prior = entries
+    .filter((entry) => entry.publishedAt < recentStart)
+    .reduce((sum, entry) => sum + entry.rawEnergy, 0);
+  const priorScaled = prior / (WINDOW.scoreHours / WINDOW.momentumHours - 1);
+  const momentum = round((recent + 0.5) / (priorScaled + 0.5), 2);
+  return { momentum, trend: momentumLabelFor(momentum) };
 }
 
 function buildBuckets(entries, now, count, spanHours) {
@@ -162,27 +185,35 @@ function composeHeadline({ score, momentum, momentumLabel, topEntity, topThread,
     };
   }
   if (name && topicLabel) {
+    const spread = `${pluralize(activeItems, 'record')} across ${pluralize(topEntity.sources, 'source')}`;
+    // Without a sample there is no pace to describe, so the sentence stops at
+    // what was actually counted.
     return {
-      text: `${name} and ${topicLabel.toLowerCase()} hold the board. ${activeItems} records across ${
-        topEntity.sources
-      } sources, and the pace is flat.`,
-      basis: 'top entity, top topic, flat momentum',
+      text: Number.isFinite(momentum)
+        ? `${name} and ${topicLabel.toLowerCase()} hold the board. ${spread}, and the pace is flat.`
+        : `${name} and ${topicLabel.toLowerCase()} hold the board: ${spread}, too few to compare.`,
+      basis: Number.isFinite(momentum)
+        ? 'top entity, top topic, flat momentum'
+        : 'top entity and top topic, no momentum sample',
     };
   }
   if (name) {
     return {
-      text: `${name} leads the board with ${activeItems} records and no strong single theme.`,
+      text: `${name} leads the board with ${pluralize(activeItems, 'record')} and no strong single theme.`,
       basis: 'top entity only',
     };
   }
   if (topicLabel) {
     return {
-      text: `${topicLabel} is where the room is: ${activeItems} records and no single name dominating.`,
+      text: `${topicLabel} is where the room is: ${pluralize(
+        activeItems,
+        'record',
+      )} and no single name dominating.`,
       basis: 'top topic only',
     };
   }
   return {
-    text: `A ${score} on the meter: ${activeItems} records, spread thin across the watchlist.`,
+    text: `A ${score} on the meter: ${pluralize(activeItems, 'record')}, spread thin across the watchlist.`,
     basis: 'volume and spread only',
   };
 }
@@ -208,16 +239,7 @@ export function buildSnapshot(items, { now = Date.now() } = {}) {
   const totalEnergy = active.reduce((sum, item) => sum + item.weight, 0);
 
   const recentStart = now - WINDOW.momentumHours * 3_600_000;
-  const priorStart = now - WINDOW.scoreHours * 3_600_000;
-  const recentEnergy = active
-    .filter((item) => item.publishedAt >= recentStart)
-    .reduce((sum, item) => sum + item.rawEnergy, 0);
-  const priorEnergy = active
-    .filter((item) => item.publishedAt < recentStart && item.publishedAt >= priorStart)
-    .reduce((sum, item) => sum + item.rawEnergy, 0);
-  const priorScaled = priorEnergy / (WINDOW.scoreHours / WINDOW.momentumHours - 1);
-  const momentum = round((recentEnergy + 0.5) / (priorScaled + 0.5), 2);
-  const momentumLabel = momentumLabelFor(momentum, recentEnergy);
+  const { momentum, trend: momentumLabel } = momentumFor(active, recentStart);
 
   const score = Math.round(100 * (1 - Math.exp(-totalEnergy / BUZZ.saturationEnergy)));
   const band = bandFor(score);
@@ -245,14 +267,7 @@ export function buildSnapshot(items, { now = Date.now() } = {}) {
       const definition = ENTITY_BY_ID[id];
       if (!definition) return null;
       const heat = mentions.reduce((sum, item) => sum + item.weight, 0);
-      const entityRecent = mentions
-        .filter((item) => item.publishedAt >= recentStart)
-        .reduce((sum, item) => sum + item.rawEnergy, 0);
-      const entityPrior = mentions
-        .filter((item) => item.publishedAt < recentStart)
-        .reduce((sum, item) => sum + item.rawEnergy, 0);
-      const entityPriorScaled = entityPrior / (WINDOW.scoreHours / WINDOW.momentumHours - 1);
-      const entityMomentum = round((entityRecent + 0.5) / (entityPriorScaled + 0.5), 2);
+      const { momentum: entityMomentum, trend: entityTrend } = momentumFor(mentions, recentStart);
       const sources = new Set(mentions.map((item) => item.publisher)).size;
       const exemplar = mentions.reduce((best, item) => (item.weight > best.weight ? item : best), mentions[0]);
       const series = buildBuckets(mentions, now, 12, 2).map((bucket) => bucket.energy);
@@ -266,7 +281,7 @@ export function buildSnapshot(items, { now = Date.now() } = {}) {
         mentions: mentions.length,
         sources,
         momentum: entityMomentum,
-        trend: momentumLabelFor(entityMomentum, entityRecent),
+        trend: entityTrend,
         series,
         exemplar: {
           title: exemplar.title,
@@ -293,14 +308,7 @@ export function buildSnapshot(items, { now = Date.now() } = {}) {
   const threads = [...byTopic.entries()]
     .map(([topic, entries]) => {
       const heat = entries.reduce((sum, item) => sum + item.weight, 0);
-      const threadRecent = entries
-        .filter((item) => item.publishedAt >= recentStart)
-        .reduce((sum, item) => sum + item.rawEnergy, 0);
-      const threadPrior = entries
-        .filter((item) => item.publishedAt < recentStart)
-        .reduce((sum, item) => sum + item.rawEnergy, 0);
-      const threadPriorScaled = threadPrior / (WINDOW.scoreHours / WINDOW.momentumHours - 1);
-      const threadMomentum = round((threadRecent + 0.5) / (threadPriorScaled + 0.5), 2);
+      const { momentum: threadMomentum, trend: threadTrend } = momentumFor(entries, recentStart);
 
       const entityTally = new Map();
       for (const item of entries) {
@@ -321,7 +329,7 @@ export function buildSnapshot(items, { now = Date.now() } = {}) {
         itemCount: entries.length,
         sources: new Set(entries.map((item) => item.publisher)).size,
         momentum: threadMomentum,
-        trend: momentumLabelFor(threadMomentum, threadRecent),
+        trend: threadTrend,
         entity: topEntityDef ? { id: topEntityDef.id, name: topEntityDef.name, kind: topEntityDef.kind } : null,
         exemplar: {
           title: exemplar.title,

@@ -81,6 +81,10 @@ export function titleKey(input) {
   return normalizeForMatch(input).replace(/\s+/g, ' ').slice(0, 160);
 }
 
+export function pluralize(count, singular, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
 export function clamp(value, min, max) {
   if (!Number.isFinite(value)) return min;
   return Math.min(max, Math.max(min, value));

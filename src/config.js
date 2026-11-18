@@ -59,6 +59,12 @@ export const BUZZ = Object.freeze({
   ]),
   risingRatio: 1.2,
   coolingRatio: 0.85,
+  /**
+   * Records a window needs before its multiplier means anything. One mention
+   * against an empty prior already reads 3.00x, which claims a trend from a
+   * single record, so a thinner window reports no momentum at all.
+   */
+  momentumMinimumRecords: 3,
 });
 
 export const TOPICS = Object.freeze([

@@ -1057,7 +1057,8 @@ test('the score rises with energy and never exceeds 100', () => {
     ),
     { now: NOW },
   );
-  assert.ok(momentumSanity(few));
+  assert.ok(momentumSanity(many), 'a real sample carries a multiplier');
+  assert.equal(few.buzz.momentum, null, 'one record is not a trend');
   assert.ok(many.buzz.score > few.buzz.score);
   assert.ok(many.buzz.score <= 100);
   assert.ok(many.buzz.energy > few.buzz.energy);
@@ -1096,6 +1097,67 @@ test('momentum reports cooling when only older records exist', () => {
     { now: NOW },
   );
   assert.equal(cooling.buzz.momentumLabel, 'cooling');
+});
+
+test('a single mention prints no multiplier', () => {
+  const alone = buildSnapshot(
+    [
+      record({
+        url: 'https://example.com/only',
+        title: 'Tomac wins',
+        entities: ['eli-tomac'],
+        topics: ['results'],
+      }),
+    ],
+    { now: NOW },
+  );
+  // One recent record against an empty prior already reads 3.00x: a multiplier
+  // with nothing on the other side of the comparison.
+  assert.equal(alone.buzz.momentum, null);
+  assert.equal(alone.buzz.momentumLabel, 'steady');
+  assert.equal(alone.entities[0].momentum, null);
+  assert.equal(alone.entities[0].trend, 'steady');
+  assert.equal(alone.threads[0].momentum, null);
+
+  const sample = buildSnapshot(
+    Array.from({ length: 3 }, (_, index) =>
+      record({
+        url: `https://example.com/s${index}`,
+        title: `Tomac story ${index}`,
+        entities: ['eli-tomac'],
+        topics: ['results'],
+        publishedAt: NOW - index * HOUR,
+      }),
+    ),
+    { now: NOW },
+  );
+  assert.ok(Number.isFinite(sample.entities[0].momentum), 'three records are a sample');
+});
+
+test('a headline without a sample claims no pace and counts in the singular', () => {
+  const alone = buildSnapshot(
+    [record({ title: 'Tomac wins', entities: ['eli-tomac'], topics: ['results'] })],
+    { now: NOW },
+  );
+  // One record is not a flat pace; it is no reading of the pace at all.
+  assert.doesNotMatch(alone.buzz.headline, /pace/i);
+  assert.match(alone.buzz.headline, /1 record across 1 source/);
+  assert.doesNotMatch(alone.buzz.headline, /1 records|1 sources/);
+  assert.equal(alone.buzz.headlineBasis, 'top entity and top topic, no momentum sample');
+
+  // A steady reading that does have a sample keeps the flat-pace wording.
+  const steady = buildSnapshot(
+    [
+      record({ url: 'https://example.com/1', title: 'Tomac wins', entities: ['eli-tomac'], publishedAt: NOW - HOUR }),
+      record({ url: 'https://example.com/2', title: 'Tomac second', entities: ['eli-tomac'], publishedAt: NOW - 8 * HOUR }),
+      record({ url: 'https://example.com/3', title: 'Tomac third', entities: ['eli-tomac'], publishedAt: NOW - 9 * HOUR }),
+      record({ url: 'https://example.com/4', title: 'Tomac fourth', entities: ['eli-tomac'], publishedAt: NOW - 10 * HOUR }),
+    ],
+    { now: NOW },
+  );
+  assert.equal(steady.buzz.momentumLabel, 'steady');
+  assert.match(steady.buzz.headline, /pace is flat/);
+  assert.match(steady.buzz.headline, /4 records across 1 source/);
 });
 
 test('buckets sum to the chatter they represent', () => {
@@ -1212,6 +1274,7 @@ test('accepts a well-formed cache', () => {
   const result = validateCache(validCache(), { now: NOW });
   assert.equal(result.ok, true);
   assert.equal(result.cache.items.length, 1);
+  assert.equal(result.cache.buzz.momentum, null, 'a one-record cache keeps no multiplier');
 });
 
 test('rejects an unknown schema version outright', () => {

@@ -70,7 +70,8 @@ the constant.
 
 The last six hours are compared with the six-hour average of the eighteen hours before them. Above 1.2× is **rising**,
 below 0.85× is **cooling**, anything else is **holding**. Every rider, brand, and topic row carries its own momentum,
-which is why one name can be cooling while the room is getting louder.
+which is why one name can be cooling while the room is getting louder. A row prints a multiplier only once it has three
+records in the window; with one or two there is nothing to compare, so it shows no number.
 
 ### Decay and eligibility
 
@@ -316,7 +317,7 @@ tests/run.js                the suite
 npm test
 ```
 
-86 tests using only Node's built-in assertions: text decoding, feed and Atom parsing, malformed-versus-empty
+89 tests using only Node's built-in assertions: text decoding, feed and Atom parsing, malformed-versus-empty
 diagnostics, the YouTube channel-feed reader and page extractor against fixtures, classifier and alias safety,
 decay and momentum, saturation, bucket accounting, cache validation, the digest's citation rules and fail-open path,
 the relay allowlist, continuity and dedupe, deprecated-source filtering, source status, the thin-build note,
