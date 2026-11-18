@@ -208,6 +208,17 @@ News honours only a bounded number of terms in one query, so a single OR list of
 silently stops covering its tail, and a shortlist silently leaves riders out. Adding a rider to the
 watchlist is therefore enough for the news pass to search for them.
 
+An index result is not accepted on the strength of the query alone. The index matches loosely —
+the `motocross` query returns a powerboat race report, and a rider-name group returns the
+obituary of an unrelated namesake — and a story like that still reads, to a keyword classifier,
+as a result: it contains `wins` and `title`. A Google News record is therefore kept only when its
+own title or summary carries a motocross term, names a watchlist entity that passes its gate, or
+comes from a known motocross outlet, and the same test is applied to records carried forward from
+the previous cache, so a story published before the gate existed cannot outlive it by two days.
+Direct feeds are configured motocross outlets and are not held to it: their own headline such as
+"Episode 500 is here" is still a motocross record. The skipped count is reported in the source
+note rather than dropped silently.
+
 The names are dealt round-robin rather than sliced in watchlist order. The watchlist runs from the
 best-covered riders to the quietest, and a straight slice puts the quiet tail into groups that
 return nothing build after build — a group with no stories looks exactly like a rider with no news.
@@ -295,7 +306,7 @@ business, rules and safety, culture and media), each a list of keywords. A keywo
 title scores 2, a hit anywhere in the text scores 1. The top three topics are kept, in score
 order. Single-word keywords match whole tokens only, so `sign` does not fire inside `design`.
 
-**Entities.** A watchlist of 50 riders, 12 brands, 9 teams, and 8 series, each with a name and an
+**Entities.** A watchlist of 52 riders, 12 brands, 9 teams, and 9 series, each with a name and an
 alias list. Aliases are compiled to word-boundary regular expressions (`PHRASE_GAP` allows
 punctuation or whitespace between words), so "Jett Lawrence" matches across "Jett — Lawrence" and
 not inside a longer word.
@@ -326,7 +337,10 @@ marine engines. A specific non-MX product term — Civic, Africa Twin, e-MTB, AT
 vetoes the hit even when the headline says "motocross-inspired". The list is deliberately narrow:
 generic words such as pilot, passport, marine, aircraft, and piano are not vetoes because they
 can appear in legitimate race coverage. The brand or team therefore appears only when the story
-is genuinely MX or comes from an MX outlet.
+is genuinely MX or comes from an MX outlet. An MX-only model name counts in that tier, so
+`Ducati Desmo450: Price and variants explained` places Ducati, while a Panigale review does not.
+Stark Future is the one ungated brand: `Stark Future` and `Stark Varg` are MX-only names, so its
+valuation and product stories need no context word.
 
 **Region.** American-series words (venues, `supercross`, `ama`, `motocross nationals`) against
 world-championship words (`mxgp`, `fim`, `mxon`, and European venues). Both present is `mixed`

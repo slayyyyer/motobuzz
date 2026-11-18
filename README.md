@@ -91,8 +91,10 @@ The score uses a 24-hour window. The cache retains up to 72 hours for browsing, 
   title or summary, or an outlet whose domain or configured source id is a known motocross publication,
   mandatory before the name counts. Brands and teams use a stricter MX-only tier: generic words such as "bike" and
   "racing" are not enough, and specific product terms such as Civic, Africa Twin, or e-MTB veto the hit, so a car
-  review mentioning Honda is not counted as motocross. Generic words such as pilot, passport, marine, aircraft, and
-  piano are deliberately not vetoes because they can appear in real race coverage. `npm run riders:audit` checks
+  review mentioning Honda is not counted as motocross. An MX-only model name counts in that tier — `Desmo450`
+  places a Ducati story — and `Stark Future` is the one ungated brand, because both of its names are MX-only on
+  their own. Generic words such as pilot, passport, marine, aircraft, and piano are deliberately not vetoes
+  because they can appear in real race coverage. `npm run riders:audit` checks
   recent headlines for gated riders, brands, and teams; it fails when a non-MX mention still counts, an MX mention is
   dropped, or an MX mention is dropped only because a product term matched.
 - A region read: American series versus world championship, from venue and series words.
@@ -117,6 +119,15 @@ piece of text is the optional digest, which is labelled on the page and never fe
 Google News items carry the real outlet in their `<source>` element, so the publisher shown is the outlet, not the
 index. The direct feeds for Racer X, Dirt Bike, and Motocross Action were tested and refused the request; the query
 route is the honest way to include them.
+
+**An index result still has to be a motocross story.** The index answers a query loosely: `motocross` comes back with
+a powerboat race report, and a rider-name group comes back with an obituary of an unrelated namesake. A record from a
+Google News query is therefore kept only when its own title or summary carries a motocross term, names someone on the
+watchlist who passes their gate, or comes from a known motocross outlet. The rest are skipped and counted in that
+source's note, so a thin result is visible rather than unexplained. Outcomes that look like a race report but are not
+one — `wins`, `title`, `team` — cannot carry another sport's story into Results & titles this way. The same test is
+applied to records carried forward from the previous cache, because an already-published story would otherwise survive
+the fix for up to two days.
 
 **A thin build says so.** When fewer than `COVERAGE.minLiveShare` (70%) of configured sources answer, the page
 prints a coverage note beside the score: "Thin build: N of M sources answered…". The number itself is not rescaled,
@@ -304,7 +315,7 @@ tests/run.js                the suite
 npm test
 ```
 
-78 tests using only Node's built-in assertions: text decoding, feed and Atom parsing, malformed-versus-empty
+86 tests using only Node's built-in assertions: text decoding, feed and Atom parsing, malformed-versus-empty
 diagnostics, the YouTube channel-feed reader and page extractor against fixtures, classifier and alias safety,
 decay and momentum, saturation, bucket accounting, cache validation, the digest's citation rules and fail-open path,
 the relay allowlist, continuity and dedupe, deprecated-source filtering, source status, the thin-build note,
