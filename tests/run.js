@@ -465,6 +465,17 @@ test('classifies a signing story and finds the rider', () => {
   assert.ok(labels.entities.includes('suzuki'));
 });
 
+test('a hip injury in the singular carries the injury topic', () => {
+  // "injur" was listed as a keyword, but a single word only matches a whole
+  // token, so it could never fire; "injury" was not listed at all. This real
+  // headline — and the Tanti AUSX injury story it reports — had no topic.
+  const labels = classify({
+    title: 'Arron Tanti Suffers Serious Hip Injury in Perth Supercross Crash',
+    summary: null,
+  });
+  assert.ok(labels.topics.includes('injury'));
+});
+
 test('classifies an injury story', () => {
   const labels = classify({ title: 'Haiden Deegan out after wrist surgery', summary: null });
   assert.ok(labels.topics.includes('injury'));

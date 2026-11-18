@@ -75,7 +75,7 @@ export const TOPICS = Object.freeze([
     id: 'injury',
     label: 'Injuries & comebacks',
     keywords: [
-      'injur', 'injuries', 'injured', 'surgery', 'surgical', 'out for', 'sidelined', 'concussion',
+      'injury', 'injuries', 'injured', 'surgery', 'surgical', 'out for', 'sidelined', 'concussion',
       'collarbone', 'torn', 'acl', 'broken', 'fracture', 'fractured', 'medical', 'rehab',
       'comeback', 'return to racing', 'cleared to race', 'hospital', 'knocked out',
     ],
