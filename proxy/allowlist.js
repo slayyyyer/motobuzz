@@ -13,7 +13,6 @@ export const ALLOWED_UPSTREAMS = Object.freeze([
   // its publisher redirects to and no second hop is needed.
   { origin: 'https://pulpmx.com', pathPrefixes: ['/feed'], label: 'PulpMX RSS' },
   { origin: 'https://www.motoonline.com', pathPrefixes: ['/au/feed'], label: 'MotoOnline RSS' },
-  { origin: 'https://www.mxgp.com', pathPrefixes: ['/rss.xml'], label: 'MXGP RSS' },
   { origin: 'https://mxvice.com', pathPrefixes: ['/feed'], label: 'MX Vice RSS' },
   { origin: 'https://www.vurbmoto.com', pathPrefixes: ['/feed'], label: 'Vurbmoto RSS' },
   { origin: 'https://news.google.com', pathPrefixes: ['/rss/search'], label: 'Google News index' },

@@ -462,13 +462,6 @@ export const FEEDS = Object.freeze([
     url: 'https://www.motoonline.com/au/feed/',
   },
   {
-    id: 'mxgp',
-    label: 'MXGP',
-    provider: 'MXGP World Championship',
-    homepage: 'https://www.mxgp.com/',
-    url: 'https://www.mxgp.com/rss.xml',
-  },
-  {
     id: 'mxvice',
     label: 'MX Vice',
     provider: 'MX Vice',
@@ -502,6 +495,9 @@ const FEED_DOMAINS = FEEDS.map((feed) => {
 export const MOTOCROSS_DOMAINS = Object.freeze([
   ...new Set([
     ...FEED_DOMAINS,
+    // MXGP's own RSS is no longer configured, so its host is named here directly:
+    // an MXGP.com page from the index still places a gated rider in motocross.
+    'mxgp.com',
     'motoonline.com',
     'racerxonline.com',
     'transworldmotocross.com',
