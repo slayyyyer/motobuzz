@@ -210,7 +210,8 @@ async function main() {
     for (const record of attempt.records) {
       const normalized = normalizeRecord(record);
       // A mixed channel's mountain-bike, MMA or other-sport upload is not
-      // motocross chatter, however well configured the channel is.
+      // motocross chatter, however well configured the channel is — and on those
+      // channels the post itself has to say motocross to count.
       if (isOffTopicSocial(normalized)) {
         offTopicSocial += 1;
         continue;
@@ -338,7 +339,7 @@ async function main() {
   log(`  ${items.length} records written, ${duplicates} duplicates dropped, ${retained.length} carried from the previous cache`);
   if (offTopicSocial > 0) {
     log(
-      `  ${offTopicSocial} social post${offTopicSocial === 1 ? '' : 's'} dropped: another sport or a non-motocross product`,
+      `  ${offTopicSocial} social post${offTopicSocial === 1 ? '' : 's'} dropped: not motocross itself`,
     );
   }
   if (unconfiguredRetained > 0) {

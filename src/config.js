@@ -525,6 +525,17 @@ export const MOTOCROSS_DOMAINS = Object.freeze([
   ]),
 ]);
 
+/**
+ * Configured sources that also publish other sports between motocross uploads:
+ * Vital MX runs its channel alongside Vital MTB, and Gypsy Tales interviews MMA
+ * fighters and MotoGP riders. Membership here is what puts their uploads on the
+ * board at all, so it cannot also be the evidence that an upload is about
+ * motocross — the post's own words, or a watchlist entry whose gate passes, have
+ * to say so. The remaining channels publish motocross only and are not asked to
+ * restate it.
+ */
+export const MIXED_SOCIAL_SOURCE_IDS = Object.freeze(['yt-vitalmx', 'yt-gypsytales']);
+
 /** Configured sources whose records are unambiguously motocross. */
 export const MOTOCROSS_SOURCE_IDS = Object.freeze([
   ...FEEDS.map((feed) => feed.id),

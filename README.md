@@ -114,7 +114,7 @@ piece of text is the optional digest, which is labelled on the page and never fe
 | MX Vice | news | `mxvice.com/feed/` | Publishes daily, including race weekends, and was one of the outlets the index used to supply |
 | Vurbmoto | news | `www.vurbmoto.com/feed/` | Same reasoning: a daily outlet read directly instead of through the index |
 | Google News × 12 | news | `news.google.com/rss/search?q=…&when:3d` | Reaches Racer X, Vital MX, Dirt Bike, and the rest, which block datacenter traffic or have no feed of their own; seven of the queries name riders from the watchlist, so a headline that never says "motocross" still counts |
-| 8 YouTube channels | social | `youtube.com/feeds/videos.xml?channel_id=…` | The documented channel feed, with the channel page as a fallback; series, magazines, and shows that publish every week |
+| 8 YouTube channels | social | `youtube.com/feeds/videos.xml?channel_id=…` | The documented channel feed, with the channel page as a fallback; series, magazines, and shows that publish every week. Vital MX and Gypsy Tales also publish mountain-bike, MMA, MotoGP and F1 videos, so their uploads count only when they say motocross in their own words or name a watchlist entry whose gate passes; a gated brand alone is enough, so `NON_MOTOCROSS_PRODUCTS` is the only guard on that path |
 
 Google News items carry the real outlet in their `<source>` element, so the publisher shown is the outlet, not the
 index. The direct feeds for Racer X, Dirt Bike, and Motocross Action were tested and refused the request; the query

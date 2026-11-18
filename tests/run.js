@@ -826,18 +826,39 @@ test('the new names do not let other subjects back in', () => {
 
 /* ---------- build pipeline ---------- */
 
-test('a social post has to be motocross itself, not just from an MX channel', () => {
+test('a mixed channel\'s social post needs motocross words or a watchlist name', () => {
   const base = { kind: 'social', summary: null, sourceId: 'yt-vitalmx', publisher: 'Vital MX', publishedAt: NOW };
-  // Real uploads that started surviving once dedupe stopped collapsing videos.
+  // Real uploads, mostly from the two channels that were already documented as
+  // mixed. A single other-sport term was never enough for the ones whose other
+  // sport is only implied by who the guest is.
   const cases = [
     ['The Best Value DH Bike on the Market? Transition’s TR11 Tested', 'yt-vitalmx', true],
-    ['The Ruotolo Brothers Are About to TAKE OVER MMA!', 'yt-gypsytales', true],
+    ['The Ruotolo Brothers Are about to TAKE OVER MMA!', 'yt-gypsytales', true],
     ["Pedro Acosta Reacts to Alex Marquez's MASSIVE MotoGP Crash!", 'yt-gypsytales', true],
     ['Lewis Hamilton Turned His LOWEST Moment Into an F1 Comeback!', 'yt-gypsytales', true],
+    ["Kade Ruotolo Reveals What It's REALLY Like Training With His Twin!", 'yt-gypsytales', true],
+    ['Why the Ruotolo Brothers Were BORN to Fight!', 'yt-gypsytales', true],
+    ['Pedro Acosta Says Marc Marquez Is the GOAT!', 'yt-gypsytales', true],
+    // Vital MX's channel is largely Vital MTB, and these carry no MX vocabulary.
+    ['Dust it off', 'yt-vitalmx', true],
+    ['Does Handlebar Compliance Really Matter?', 'yt-vitalmx', true],
+    // 'bike' is an MX word, so the product veto has to win first: an e-bike review
+    // is not motocross just because the word contains "bike".
+    ["The Most Fun E-Bike We've Ever Ridden? | Intense Tazer Review", 'yt-vitalmx', true],
+    // A watchlist name that passes its own gate is evidence too: this is a real MX
+    // upload whose title carries no MX word at all, only the brand.
+    ['What Went So WRONG With the 2023 KTM?!', 'yt-gypsytales', false],
+    // ...but the product veto still comes first, so a gated brand cannot carry a
+    // product review back in.
+    ['KTM electric mountain bike first ride', 'yt-gypsytales', true],
     // The same channels' motocross uploads keep counting.
     ['Even MMA Fighters Think SUPERCROSS Is More Dangerous?!', 'yt-gypsytales', false],
     ["Eli Tomac's Most LEGENDARY Motocross & Supercross Moments!", 'yt-gypsytales', false],
     ['Why EVERYONE Loves Supercross Star Malcolm Stewart!', 'yt-gypsytales', false],
+    ['Why GNCC Is the TRUE Grassroots of Racing!', 'yt-gypsytales', false],
+    ["Jett Lawrence's Parents Went ALL IN on His Racing Career!", 'yt-gypsytales', false],
+    // Only the two channels documented as mixed are held to it: a show whose titles
+    // name the guests alone is not asked to restate what it is.
     ['PulpMX Show 686 - Strang, McAdoo, Duffe, Kent, Kauffman, Ullrich', 'yt-pulpmx', false],
   ];
   for (const [title, sourceId, offTopic] of cases) {
@@ -853,7 +874,7 @@ test('a social post has to be motocross itself, not just from an MX channel', ()
       items: [
         {
           ...base,
-          title: 'The Ruotolo Brothers Are About to TAKE OVER MMA!',
+          title: 'Why the Ruotolo Brothers Were BORN to Fight!',
           url: 'https://www.youtube.com/watch?v=AAAAAAAAAAA',
         },
       ],

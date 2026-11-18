@@ -6,9 +6,15 @@
  * are duplicates, and how a source's status is derived from what happened.
  */
 import { isJunkTitle } from '../adapters/news.js';
-import { NEWS_QUERIES } from '../config.js';
+import { MIXED_SOCIAL_SOURCE_IDS, NEWS_QUERIES } from '../config.js';
 import { titleKey } from '../lib/text.js';
-import { hasMotocrossEntityContext, hasNonMotocrossProduct, isMotocrossStory } from './classify.js';
+import {
+  classify,
+  hasMotocrossContext,
+  hasMotocrossEntityContext,
+  hasNonMotocrossProduct,
+  isMotocrossStory,
+} from './classify.js';
 import { isEligible, urlKey } from './score.js';
 
 /** Search-index records, which carry no promise of being about motocross. */
@@ -21,20 +27,34 @@ const INDEX_SOURCE_IDS = new Set(NEWS_QUERIES.map((entry) => entry.id));
  * MOTOCROSS_SOURCE_IDS, which places every upload from them in motocross by
  * definition. A post that carries a non-motocross subject from
  * NON_MOTOCROSS_PRODUCTS is therefore dropped unless its own words place it in
- * motocross; the strict tier is used, because "bike" and "racing" appear in a
- * bicycle review too.
+ * motocross; that exception uses the strict tier, because "bike" and "racing"
+ * appear in a bicycle review too.
+ *
+ * A single veto term is not enough for a mixed channel. "Kade Ruotolo Reveals
+ * What It's REALLY Like Training With His Twin" names no other sport at all — who
+ * the guest is carries it — so the product list can never catch it. Those
+ * channels' posts are instead kept only when their own words place them in
+ * motocross, or when they name something on the watchlist that passes its own
+ * gate: "What Went So WRONG With the 2023 KTM?!" says nothing about motocross
+ * except the brand, and a brand only counts once its gate is satisfied. The
+ * product veto still runs first, because "bike" is an MX word and an e-bike
+ * review would otherwise pass on the substring — that ordering is what stops a
+ * gated brand from carrying a product review back in.
  *
  * News is not held to this: the adapters and the index gate decide what a news
  * record has to show, and a configured feed's own headline can be terse.
  *
- * @param {{kind?: string, title?: string, summary?: string|null}} record
+ * @param {{kind?: string, title?: string, summary?: string|null, sourceId?: string}} record
  * @returns {boolean} true when the record is a social post about something else.
  */
 export function isOffTopicSocial(record) {
   if (record?.kind !== 'social') return false;
   const text = `${record.title || ''} ${record.summary || ''}`;
-  if (!hasNonMotocrossProduct(text)) return false;
-  return !hasMotocrossEntityContext(text);
+  if (hasNonMotocrossProduct(text) && !hasMotocrossEntityContext(text)) return true;
+  if (!MIXED_SOCIAL_SOURCE_IDS.includes(record.sourceId)) return false;
+  return (
+    !hasMotocrossContext(text) && !hasMotocrossEntityContext(text) && classify(record).entities.length === 0
+  );
 }
 
 /**
