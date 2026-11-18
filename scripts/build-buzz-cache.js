@@ -26,7 +26,7 @@ import { loadYoutubeSource, youtubeSourceDefs } from '../src/adapters/youtube.js
 import { bridgeBase, bridgeSourceDefs, loadBridgeSource } from '../src/adapters/bridge.js';
 import { classify } from '../src/engine/classify.js';
 import { saveDiagnostics } from '../src/engine/diagnostics.js';
-import { buildSourceRows, dedupeRecords, retainPrevious } from '../src/engine/pipeline.js';
+import { buildSourceRows, dedupeRecords, isOffTopicSocial, retainPrevious } from '../src/engine/pipeline.js';
 import { buildSnapshot, stableId } from '../src/engine/score.js';
 import { validateCache } from '../src/engine/validate.js';
 import { enrichLabels } from '../src/engine/enrich.js';
@@ -205,8 +205,18 @@ async function main() {
   // The ingest gate in news.js has already dropped index results with no
   // motocross evidence, so every record here is one the build can count.
   const ordered = [];
+  let offTopicSocial = 0;
   for (const attempt of attempts) {
-    for (const record of attempt.records) ordered.push(normalizeRecord(record));
+    for (const record of attempt.records) {
+      const normalized = normalizeRecord(record);
+      // A mixed channel's mountain-bike, MMA or other-sport upload is not
+      // motocross chatter, however well configured the channel is.
+      if (isOffTopicSocial(normalized)) {
+        offTopicSocial += 1;
+        continue;
+      }
+      ordered.push(normalized);
+    }
   }
   // Retained records come last so a freshly fetched copy always wins the dedupe.
   for (const item of retained) ordered.push(normalizeRecord(item));
@@ -277,6 +287,7 @@ async function main() {
         error: digest.error,
       },
       duplicatesDropped: duplicates,
+      offTopicSocialDropped: offTopicSocial,
       recordsPruned: pruned,
       recordsRetained: retained.length,
       recordsKept: items.length,
@@ -319,6 +330,11 @@ async function main() {
   log(`  buzz ${snapshot.buzz.score}/100 (${snapshot.buzz.label}) · ${snapshot.buzz.activeItems} active records · momentum x${snapshot.buzz.momentum}`);
   log(`  ${snapshot.buzz.headline}`);
   log(`  ${items.length} records written, ${duplicates} duplicates dropped, ${retained.length} carried from the previous cache`);
+  if (offTopicSocial > 0) {
+    log(
+      `  ${offTopicSocial} social post${offTopicSocial === 1 ? '' : 's'} dropped: another sport or a non-motocross product`,
+    );
+  }
   if (unconfiguredRetained > 0) {
     log(
       `  ${unconfiguredRetained} retained record${unconfiguredRetained === 1 ? '' : 's'} dropped: the source is no longer configured`,

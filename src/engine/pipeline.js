@@ -8,11 +8,34 @@
 import { isJunkTitle } from '../adapters/news.js';
 import { NEWS_QUERIES } from '../config.js';
 import { titleKey } from '../lib/text.js';
-import { isMotocrossStory } from './classify.js';
+import { hasMotocrossEntityContext, hasNonMotocrossProduct, isMotocrossStory } from './classify.js';
 import { isEligible, urlKey } from './score.js';
 
 /** Search-index records, which carry no promise of being about motocross. */
 const INDEX_SOURCE_IDS = new Set(NEWS_QUERIES.map((entry) => entry.id));
+
+/**
+ * A social post counts only when the post itself is motocross. The channel is
+ * not evidence: Vital MX and Gypsy Tales both publish mountain-bike, MMA and
+ * MotoGP videos between motocross ones, and their source ids are already in
+ * MOTOCROSS_SOURCE_IDS, which places every upload from them in motocross by
+ * definition. A post that carries a non-motocross subject from
+ * NON_MOTOCROSS_PRODUCTS is therefore dropped unless its own words place it in
+ * motocross; the strict tier is used, because "bike" and "racing" appear in a
+ * bicycle review too.
+ *
+ * News is not held to this: the adapters and the index gate decide what a news
+ * record has to show, and a configured feed's own headline can be terse.
+ *
+ * @param {{kind?: string, title?: string, summary?: string|null}} record
+ * @returns {boolean} true when the record is a social post about something else.
+ */
+export function isOffTopicSocial(record) {
+  if (record?.kind !== 'social') return false;
+  const text = `${record.title || ''} ${record.summary || ''}`;
+  if (!hasNonMotocrossProduct(text)) return false;
+  return !hasMotocrossEntityContext(text);
+}
 
 /**
  * Old records may be carried forward only when their source is still configured.
@@ -30,6 +53,8 @@ export function retainPrevious(previous, { configuredSourceIds, now }) {
     if (!isEligible(item, now)) continue;
     // A headline the denylist would reject today must not survive by being old.
     if (isJunkTitle(item.title)) continue;
+    // A social post about another subject must not outlive the rule that drops it.
+    if (isOffTopicSocial(item)) continue;
     // Neither must an index record that never showed motocross evidence, or the
     // story that prompted the ingest gate would sit in the cache for two days.
     if (INDEX_SOURCE_IDS.has(item.sourceId) && !isMotocrossStory(item)) continue;

@@ -13,7 +13,7 @@ import { buildAtomFeed } from '../src/engine/feed.js';
 import { saveDiagnostics } from '../src/engine/diagnostics.js';
 import { applyDigest, generateDigest, parseDigest, parseDigestDetailed, planDigest } from '../src/engine/digest.js';
 import { coverageNoteText } from '../src/app/render.js';
-import { buildSourceRows, dedupeRecords, retainPrevious } from '../src/engine/pipeline.js';
+import { buildSourceRows, dedupeRecords, isOffTopicSocial, retainPrevious } from '../src/engine/pipeline.js';
 import {
   applyEnrichment,
   enrichLabels,
@@ -814,6 +814,43 @@ test('the new names do not let other subjects back in', () => {
 });
 
 /* ---------- build pipeline ---------- */
+
+test('a social post has to be motocross itself, not just from an MX channel', () => {
+  const base = { kind: 'social', summary: null, sourceId: 'yt-vitalmx', publisher: 'Vital MX', publishedAt: NOW };
+  // Real uploads that started surviving once dedupe stopped collapsing videos.
+  const cases = [
+    ['The Best Value DH Bike on the Market? Transition’s TR11 Tested', 'yt-vitalmx', true],
+    ['The Ruotolo Brothers Are About to TAKE OVER MMA!', 'yt-gypsytales', true],
+    ["Pedro Acosta Reacts to Alex Marquez's MASSIVE MotoGP Crash!", 'yt-gypsytales', true],
+    ['Lewis Hamilton Turned His LOWEST Moment Into an F1 Comeback!', 'yt-gypsytales', true],
+    // The same channels' motocross uploads keep counting.
+    ['Even MMA Fighters Think SUPERCROSS Is More Dangerous?!', 'yt-gypsytales', false],
+    ["Eli Tomac's Most LEGENDARY Motocross & Supercross Moments!", 'yt-gypsytales', false],
+    ['Why EVERYONE Loves Supercross Star Malcolm Stewart!', 'yt-gypsytales', false],
+    ['PulpMX Show 686 - Strang, McAdoo, Duffe, Kent, Kauffman, Ullrich', 'yt-pulpmx', false],
+  ];
+  for (const [title, sourceId, offTopic] of cases) {
+    assert.equal(isOffTopicSocial({ ...base, sourceId, title }), offTopic, title);
+  }
+  // This rule is for social records only; the news adapters and the index gate
+  // already decide what a news record has to show.
+  assert.equal(isOffTopicSocial({ ...base, kind: 'news', title: 'The Best Value DH Bike on the Market?' }), false);
+
+  // A carried-forward copy of an off-topic post must not outlive the fix.
+  const out = retainPrevious(
+    {
+      items: [
+        {
+          ...base,
+          title: 'The Ruotolo Brothers Are About to TAKE OVER MMA!',
+          url: 'https://www.youtube.com/watch?v=AAAAAAAAAAA',
+        },
+      ],
+    },
+    { configuredSourceIds: new Set(['yt-gypsytales']), now: NOW },
+  );
+  assert.equal(out.retained.length, 0);
+});
 
 test('a retained record from a source no longer configured is dropped', () => {
   const previous = {

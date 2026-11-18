@@ -347,10 +347,12 @@ export const MOTOCROSS_ENTITY_CONTEXT = Object.freeze([
 ]);
 
 /**
- * Product and model terms specific enough to veto a gated brand or team. Keep
- * this list narrow: generic English words such as pilot, passport, marine,
- * aircraft, and piano can appear in legitimate race coverage and must not veto
- * a story on their own.
+ * Product, model, and other-sport terms specific enough to veto a gated brand or
+ * team, and used as the one off-topic list for social posts: a mixed channel's
+ * mountain-bike or MMA upload is not motocross chatter even though the channel is
+ * a configured MX source. Keep it narrow: generic English words such as pilot,
+ * passport, marine, aircraft, and piano can appear in legitimate race coverage and
+ * must not veto a story on their own.
  */
 export const NON_MOTOCROSS_PRODUCTS = Object.freeze([
   'car review',
@@ -401,6 +403,17 @@ export const NON_MOTOCROSS_PRODUCTS = Object.freeze([
   'lawn mower',
   'snowblower',
   'hondajet',
+  // Other sports. A post that names one of these is only kept when its own words
+  // also place it in motocross, which keeps "MMA Fighters Think Supercross Is
+  // More Dangerous" and drops a MotoGP or F1 upload from the same channel.
+  'downhill',
+  'dh',
+  'mma',
+  'ufc',
+  'motogp',
+  'moto gp',
+  'f1',
+  'formula 1',
 ]);
 
 export const WATCHLIST = Object.freeze([
