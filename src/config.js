@@ -593,13 +593,17 @@ export const NEWS_TITLE_DENYLIST = Object.freeze([
 ]);
 
 // The channel id is what YouTube's public Atom feed needs; it was resolved from
-// each handle on 2026-11-13 and is stable. The feed is read first because it is
-// documented, dated, and carries view counts; the channel page is the fallback.
+// each handle and is stable. A wrong id does not always 404: the one Motocross
+// Action carried answered 200 with a channel whose newest upload was from 2009,
+// which reads on the page as a quiet week rather than a misconfiguration. Resolve
+// it from the handle page's externalId (2026-11-18 for Motocross Action). The feed
+// is read first because it is documented, dated, and carries view counts; the
+// channel page is the fallback.
 export const YOUTUBE_CHANNELS = Object.freeze([
   { id: 'yt-supercrosslive', handle: 'SupercrossLIVE', channelId: 'UCcAjWBbd4aO4AhoovRKNbag', label: 'Monster Energy Supercross' },
   { id: 'yt-supermotocross', handle: 'SuperMotocross', channelId: 'UCkaNo2FUEWips2z4BkOHl6Q', label: 'SuperMotocross' },
   { id: 'yt-vitalmx', handle: 'vitalmx', channelId: 'UCcX5xwMOCt92bi0dmspMFQw', label: 'Vital MX' },
-  { id: 'yt-motocrossaction', handle: 'motocrossaction', channelId: 'UCdsTZGGXC9xtLjGeuLJTBlg', label: 'Motocross Action' },
+  { id: 'yt-motocrossaction', handle: 'motocrossaction', channelId: 'UC13uOawMwZh56D2dEn41Gyw', label: 'Motocross Action' },
   { id: 'yt-dirtbikemag', handle: 'DirtBikeMagazine', channelId: 'UCeKccRs9icuvfnQ2Z6Yf6gQ', label: 'Dirt Bike Magazine' },
   // The OEM channels post a handful of times a season, so they were replaced
   // by outlets that publish every week. A wrong handle is a 404, and a wrong
