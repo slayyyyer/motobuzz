@@ -1104,6 +1104,34 @@ test('urlKey drops tracking parameters and trailing slashes', () => {
   );
 });
 
+test('a YouTube watch link is keyed on its video id, not on tracking', () => {
+  const a = 'https://www.youtube.com/watch?v=AAAAAAAAAAA';
+  const b = 'https://www.youtube.com/watch?v=BBBBBBBBBBB';
+  // `v` carries the video id. Treating it as tracking stripped it, so every
+  // video in the cache collapsed into the same key and dedupe kept just one.
+  assert.notEqual(urlKey(a), urlKey(b));
+  // The parameters around it are still dropped.
+  assert.equal(urlKey(`${a}&list=PL123&t=42`), urlKey(a));
+  // An ordinary news URL keeps its existing treatment of query parameters.
+  assert.equal(
+    urlKey('https://racerxonline.com/2026/11/17/ktm-launch?utm_source=x'),
+    urlKey('https://racerxonline.com/2026/11/17/ktm-launch'),
+  );
+});
+
+test('dedupe keeps videos from different channels', () => {
+  const base = { kind: 'social', summary: null, publishedAt: NOW - 2 * HOUR };
+  const out = dedupeRecords(
+    [
+      { ...base, sourceId: 'yt-vitalmx', title: 'One video', url: 'https://www.youtube.com/watch?v=AAAAAAAAAAA' },
+      { ...base, sourceId: 'yt-pulpmx', title: 'Another video', url: 'https://www.youtube.com/watch?v=BBBBBBBBBBB' },
+    ],
+    { now: NOW },
+  );
+  assert.equal(out.deduped.length, 2);
+  assert.equal(out.duplicates, 0);
+});
+
 /* ---------- validation ---------- */
 
 function validCache(overrides = {}) {

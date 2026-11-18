@@ -42,7 +42,9 @@ export function urlKey(url) {
   try {
     const parsed = new URL(url);
     parsed.hash = '';
-    const keep = [...parsed.searchParams.keys()].filter((key) => /^(id|p|story|article)$/i.test(key));
+    // `v` is an identifier, not tracking: YouTube carries the video id in it, and
+    // stripping it collapsed every video into one key, so dedupe kept one video.
+    const keep = [...parsed.searchParams.keys()].filter((key) => /^(id|p|story|article|v)$/i.test(key));
     for (const key of [...parsed.searchParams.keys()]) {
       if (!keep.includes(key)) parsed.searchParams.delete(key);
     }
