@@ -106,11 +106,11 @@ piece of text is the optional digest, which is labelled on the page and never fe
 | --- | --- | --- | --- |
 | Supercross Live | news | `supercrosslive.com/rss` | Official Monster Energy AMA Supercross feed |
 | SuperMotocross | news | `supermotocross.com/feed/` | Official SMX World Championship feed |
-| PulpMX | news | `pulpmx.com/feed` | The show and the shop talk that break signings and injuries first |
-| MotoOnline | news | `motoonline.com.au/feed/` | Australian MX coverage, still publishing daily through the off-season |
+| PulpMX | news | `pulpmx.com/feed/` | The show and the shop talk that break signings and injuries first |
+| MotoOnline | news | `motoonline.com/au/feed/` | Australian MX coverage, still publishing daily through the off-season |
 | MXGP | news | `mxgp.com/rss.xml` | Official FIM Motocross World Championship feed, so the world series has a first-party source too |
 | MX Vice | news | `mxvice.com/feed/` | Publishes daily, including race weekends, and was one of the outlets the index used to supply |
-| Vurbmoto | news | `vurbmoto.com/feed/` | Same reasoning: a daily outlet read directly instead of through the index |
+| Vurbmoto | news | `www.vurbmoto.com/feed/` | Same reasoning: a daily outlet read directly instead of through the index |
 | Google News × 12 | news | `news.google.com/rss/search?q=…&when:3d` | Reaches Racer X, Vital MX, Dirt Bike, and the rest, which block datacenter traffic or have no feed of their own; seven of the queries name riders from the watchlist, so a headline that never says "motocross" still counts |
 | 9 YouTube channels | social | `youtube.com/feeds/videos.xml?channel_id=…` | The documented channel feed, with the channel page as a fallback; series, magazines, and shows that publish every week |
 

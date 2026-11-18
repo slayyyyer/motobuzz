@@ -414,7 +414,11 @@ export const ENTITY_BY_ID = Object.freeze(Object.fromEntries(WATCHLIST.map((entr
 
 export const ENTITY_PAGE_SIZE = 12;
 
-/** Direct feeds that serve public RSS to a runner. */
+/**
+ * Direct feeds that serve public RSS to a runner. Each URL is the address the
+ * publisher itself redirects to, so the relay never follows a hop that its
+ * allowlist would have to name separately.
+ */
 export const FEEDS = Object.freeze([
   {
     id: 'supercrosslive',
@@ -435,14 +439,14 @@ export const FEEDS = Object.freeze([
     label: 'PulpMX',
     provider: 'PulpMX',
     homepage: 'https://www.pulpmx.com/',
-    url: 'https://www.pulpmx.com/feed',
+    url: 'https://pulpmx.com/feed/',
   },
   {
     id: 'motoonline',
     label: 'MotoOnline',
     provider: 'MotoOnline (AU)',
     homepage: 'https://www.motoonline.com.au/',
-    url: 'https://www.motoonline.com.au/feed/',
+    url: 'https://www.motoonline.com/au/feed/',
   },
   {
     id: 'mxgp',
@@ -463,7 +467,7 @@ export const FEEDS = Object.freeze([
     label: 'Vurbmoto',
     provider: 'Vurbmoto',
     homepage: 'https://vurbmoto.com/',
-    url: 'https://vurbmoto.com/feed/',
+    url: 'https://www.vurbmoto.com/feed/',
   },
 ]);
 

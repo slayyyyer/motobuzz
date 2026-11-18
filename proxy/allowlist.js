@@ -9,11 +9,13 @@
 export const ALLOWED_UPSTREAMS = Object.freeze([
   { origin: 'https://www.supercrosslive.com', pathPrefixes: ['/rss', '/feed'], label: 'Monster Energy Supercross RSS' },
   { origin: 'https://www.supermotocross.com', pathPrefixes: ['/feed/'], label: 'SuperMotocross RSS' },
-  { origin: 'https://www.pulpmx.com', pathPrefixes: ['/feed'], label: 'PulpMX RSS' },
-  { origin: 'https://www.motoonline.com.au', pathPrefixes: ['/feed/'], label: 'MotoOnline RSS' },
+  // The relay re-checks every redirect hop, so each feed is named at the address
+  // its publisher redirects to and no second hop is needed.
+  { origin: 'https://pulpmx.com', pathPrefixes: ['/feed'], label: 'PulpMX RSS' },
+  { origin: 'https://www.motoonline.com', pathPrefixes: ['/au/feed'], label: 'MotoOnline RSS' },
   { origin: 'https://www.mxgp.com', pathPrefixes: ['/rss.xml'], label: 'MXGP RSS' },
   { origin: 'https://mxvice.com', pathPrefixes: ['/feed'], label: 'MX Vice RSS' },
-  { origin: 'https://vurbmoto.com', pathPrefixes: ['/feed'], label: 'Vurbmoto RSS' },
+  { origin: 'https://www.vurbmoto.com', pathPrefixes: ['/feed'], label: 'Vurbmoto RSS' },
   { origin: 'https://news.google.com', pathPrefixes: ['/rss/search'], label: 'Google News index' },
   { origin: 'https://www.youtube.com', pathPrefixes: ['/@', '/feeds/'], label: 'Public YouTube channel pages and feeds' },
 ]);

@@ -1201,6 +1201,17 @@ test('allows known upstreams', () => {
   assert.equal(matchUpstream('https://www.youtube.com/@vitalmx/videos').allowed, true);
 });
 
+test('a feed host is allowed only on its feed path', () => {
+  // The feeds are configured at the address each publisher redirects to, so the
+  // relay never follows a hop the list would have to name as well.
+  assert.equal(matchUpstream('https://pulpmx.com/feed/').allowed, true);
+  assert.equal(matchUpstream('https://www.motoonline.com/au/feed/').allowed, true);
+  assert.equal(matchUpstream('https://www.vurbmoto.com/feed/').allowed, true);
+  assert.equal(matchUpstream('https://pulpmx.com/shop').allowed, false);
+  assert.equal(matchUpstream('https://www.motoonline.com/news').allowed, false);
+  assert.equal(matchUpstream('https://www.vurbmoto.com/shop').allowed, false);
+});
+
 test('refuses everything else', () => {
   assert.equal(matchUpstream('http://www.supercrosslive.com/rss').allowed, false);
   assert.equal(matchUpstream('https://evil.example.com/rss').allowed, false);
