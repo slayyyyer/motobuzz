@@ -139,9 +139,13 @@ function keywordHits(text, keyword) {
 /**
  * @param {{title: string, summary?: string|null, publisher?: string|null,
  *   publisherUrl?: string|null, sourceId?: string|null, url?: string|null}} record
+ * @param {{outletIsEvidence?: boolean}} [options] A known MX outlet normally
+ *   satisfies the context gate for a gated rider, brand, or team. Pass false to
+ *   ask only what the record's own words say: a channel that also publishes other
+ *   sports cannot vouch for the upload it is carrying.
  * @returns {{topics: string[], entities: string[], region: 'us'|'world'|'mixed'|null}}
  */
-export function classify(record) {
+export function classify(record, { outletIsEvidence = true } = {}) {
   const titleText = normalizeForMatch(record?.title || '');
   const fullText = normalizeForMatch(`${record?.title || ''} ${record?.summary || ''}`);
 
@@ -149,7 +153,7 @@ export function classify(record) {
   // Computed once: a common-name rider needs a motocross term somewhere in the
   // story, or a publisher whose name already places it in motocross. Brands and
   // teams use the stricter tier and are vetoed by non-MX products.
-  const outlet = isMotocrossOutlet(record);
+  const outlet = outletIsEvidence && isMotocrossOutlet(record);
   const motocrossContext = hasMotocrossContext(fullText) || outlet;
   const brandTeamContext =
     (hasMotocrossEntityContext(fullText) || outlet) && !hasNonMotocrossProduct(fullText);

@@ -22,10 +22,9 @@ const INDEX_SOURCE_IDS = new Set(NEWS_QUERIES.map((entry) => entry.id));
 
 /**
  * A social post counts only when the post itself is motocross. The channel is
- * not evidence: Vital MX and Gypsy Tales both publish mountain-bike, MMA and
+ * never evidence: Vital MX and Gypsy Tales both publish mountain-bike, MMA and
  * MotoGP videos between motocross ones, and their source ids are already in
- * MOTOCROSS_SOURCE_IDS, which places every upload from them in motocross by
- * definition. A post that carries a non-motocross subject from
+ * MOTOCROSS_SOURCE_IDS. A post that carries a non-motocross subject from
  * NON_MOTOCROSS_PRODUCTS is therefore dropped unless its own words place it in
  * motocross; that exception uses the strict tier, because "bike" and "racing"
  * appear in a bicycle review too.
@@ -34,12 +33,19 @@ const INDEX_SOURCE_IDS = new Set(NEWS_QUERIES.map((entry) => entry.id));
  * What It's REALLY Like Training With His Twin" names no other sport at all — who
  * the guest is carries it — so the product list can never catch it. Those
  * channels' posts are instead kept only when their own words place them in
- * motocross, or when they name something on the watchlist that passes its own
- * gate: "What Went So WRONG With the 2023 KTM?!" says nothing about motocross
- * except the brand, and a brand only counts once its gate is satisfied. The
- * product veto still runs first, because "bike" is an MX word and an e-bike
- * review would otherwise pass on the substring — that ordering is what stops a
- * gated brand from carrying a product review back in.
+ * motocross, or when they name something on the watchlist that needs no gate.
+ *
+ * The channel does not stand in for a gate either, so the entity pass below runs
+ * with outletIsEvidence: false. A configured source id is an outlet to
+ * classify(), and an outlet satisfies the strict tier a gated brand needs, which
+ * let "KTM 390 Duke first ride" count on the word "KTM" alone. The product list
+ * cannot take that job: every manufacturer adds a street model each year, and the
+ * same list also vetoes news stories. The price is an MX upload whose title says
+ * nothing but the brand, such as "What Went So WRONG With the 2023 KTM?!", which
+ * now drops; tests/run.js records that as a cost rather than as correct.
+ *
+ * The product veto still runs first, because "bike" is an MX word and an e-bike
+ * review would otherwise pass on the substring.
  *
  * News is not held to this: the adapters and the index gate decide what a news
  * record has to show, and a configured feed's own headline can be terse.
@@ -53,7 +59,9 @@ export function isOffTopicSocial(record) {
   if (hasNonMotocrossProduct(text) && !hasMotocrossEntityContext(text)) return true;
   if (!MIXED_SOCIAL_SOURCE_IDS.includes(record.sourceId)) return false;
   return (
-    !hasMotocrossContext(text) && !hasMotocrossEntityContext(text) && classify(record).entities.length === 0
+    !hasMotocrossContext(text) &&
+    !hasMotocrossEntityContext(text) &&
+    classify(record, { outletIsEvidence: false }).entities.length === 0
   );
 }
 

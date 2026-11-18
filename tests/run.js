@@ -845,11 +845,11 @@ test('a mixed channel\'s social post needs motocross words or a watchlist name',
     // 'bike' is an MX word, so the product veto has to win first: an e-bike review
     // is not motocross just because the word contains "bike".
     ["The Most Fun E-Bike We've Ever Ridden? | Intense Tazer Review", 'yt-vitalmx', true],
-    // A watchlist name that passes its own gate is evidence too: this is a real MX
-    // upload whose title carries no MX word at all, only the brand.
-    ['What Went So WRONG With the 2023 KTM?!', 'yt-gypsytales', false],
-    // ...but the product veto still comes first, so a gated brand cannot carry a
-    // product review back in.
+    // The price of the rule below: a real MX upload whose title names the brand and
+    // nothing else now drops. This is a known cost, not correct behaviour.
+    ['What Went So WRONG With the 2023 KTM?!', 'yt-gypsytales', true],
+    // The product veto still comes first, so a gated brand cannot carry a product
+    // review back in even when the review's own words place it in motocross.
     ['KTM electric mountain bike first ride', 'yt-gypsytales', true],
     // The same channels' motocross uploads keep counting.
     ['Even MMA Fighters Think SUPERCROSS Is More Dangerous?!', 'yt-gypsytales', false],
@@ -882,6 +882,28 @@ test('a mixed channel\'s social post needs motocross words or a watchlist name',
     { configuredSourceIds: new Set(['yt-gypsytales']), now: NOW },
   );
   assert.equal(out.retained.length, 0);
+});
+
+test("a mixed channel's brand alone does not carry a street-bike video", () => {
+  const base = { kind: 'social', summary: null, sourceId: 'yt-vitalmx', publisher: 'Vital MX', publishedAt: NOW };
+  // A configured MX source used to satisfy the brand gate all by itself, so a gated
+  // brand was the only thing in the text saying motocross: the channel talking, not
+  // the upload. Street models are the cases the product list does not name and never
+  // will, because every manufacturer adds a new one each year.
+  const streetBike = [
+    ['KTM 390 Duke first ride', 'yt-vitalmx'],
+    ['2026 KTM 390 Adventure review', 'yt-gypsytales'],
+    ['Honda CB650R first ride review', 'yt-vitalmx'],
+    ['Kawasaki Ninja 500 first ride', 'yt-gypsytales'],
+    ['Yamaha MT-07 first ride', 'yt-vitalmx'],
+  ];
+  for (const [title, sourceId] of streetBike) {
+    assert.equal(isOffTopicSocial({ ...base, sourceId, title }), true, title);
+  }
+  // The strict tier still carries a brand when the upload names an MX model.
+  assert.equal(isOffTopicSocial({ ...base, title: '2027 KTM 450 SX-F first ride' }), false);
+  // And a name that needs no gate at all is still evidence on these channels.
+  assert.equal(isOffTopicSocial({ ...base, title: 'Stark Varg: What the New Model Changes' }), false);
 });
 
 test('a retained record from a source no longer configured is dropped', () => {

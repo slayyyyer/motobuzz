@@ -591,7 +591,7 @@ one of them is about the sport.
 
 ## 13. Tests and reproducibility
 
-`npm test` runs 89 tests on Node's built-in assertions, with no test framework and no
+`npm test` runs 90 tests on Node's built-in assertions, with no test framework and no
 dependencies: text decoding, RSS and Atom parsing, malformed-versus-empty diagnostics, the
 YouTube channel feed and page extractor against fixtures, classifier and alias safety (including
 the surnames that must *not* match), decay and momentum with its minimum sample, saturation,
