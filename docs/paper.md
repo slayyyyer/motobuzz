@@ -591,13 +591,13 @@ one of them is about the sport.
 
 ## 13. Tests and reproducibility
 
-`npm test` runs 78 tests on Node's built-in assertions, with no test framework and no
-dependencies: text decoding and normalization, RSS and Atom parsing, malformed-versus-empty
-diagnostics, the YouTube channel feed and page extractor against fixtures, classifier and alias
-safety (including the surnames that must *not* match), decay, momentum, saturation, bucket
-accounting, cache validation, the digest's citation rules and fail-open path, the relay
-allowlist, continuity and dedupe, retained-source filtering, source status, the thin-build note,
-diagnostics, and the Atom feed.
+`npm test` runs 89 tests on Node's built-in assertions, with no test framework and no
+dependencies: text decoding, RSS and Atom parsing, malformed-versus-empty diagnostics, the
+YouTube channel feed and page extractor against fixtures, classifier and alias safety (including
+the surnames that must *not* match), decay and momentum with its minimum sample, saturation,
+bucket accounting, cache validation, the digest's citation rules and fail-open path, the relay
+allowlist, the off-topic social gate on mixed channels, continuity and dedupe, retained-source
+filtering, source status, the thin-build note, diagnostics, and the Atom feed.
 
 Everything in this paper can be reproduced without credentials:
 
