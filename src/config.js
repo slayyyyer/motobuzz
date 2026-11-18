@@ -534,7 +534,6 @@ export const MOTOCROSS_SOURCE_IDS = Object.freeze([
   'yt-pulpmx',
   'yt-gypsytales',
   'yt-racerx',
-  'yt-whiskeythrottle',
 ]);
 
 /**
@@ -611,7 +610,6 @@ export const YOUTUBE_CHANNELS = Object.freeze([
   { id: 'yt-pulpmx', handle: 'pulpmx', channelId: 'UCpMfM2f4b6ehg1H_olAx02Q', label: 'PulpMX' },
   { id: 'yt-gypsytales', handle: 'gypsytales', channelId: 'UCsBGR5UR7UCyLvNbHSxisFQ', label: 'Gypsy Tales' },
   { id: 'yt-racerx', handle: 'RacerXIllustrated', channelId: 'UCzLDrufzDTIQX_F20r0EiMA', label: 'Racer X' },
-  { id: 'yt-whiskeythrottle', handle: 'whiskeythrottle', channelId: 'UCeYlMNQb9nichyHaBZEWtFg', label: 'Whiskey Throttle' },
 ]);
 
 export const YOUTUBE_BASE = 'https://www.youtube.com';

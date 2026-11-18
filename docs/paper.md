@@ -195,7 +195,7 @@ Thirty configured sources, in four families.
 | --- | --- | --- | --- | --- |
 | Direct RSS feeds | 7 | `news.js` | 30 items | `unavailable` / `malformed` |
 | Google News queries | 12 | `news.js` | 30 items | same |
-| YouTube channels | 9 | `youtube.js` | 12 videos | `malformed` if feed and page both fail |
+| YouTube channels | 8 | `youtube.js` | 12 videos | `malformed` if feed and page both fail |
 | (X via operator bridge) | 2 | `bridge.js` | 12 posts | `unconfigured` by default |
 
 The Google News queries are not a convenience. Racer X, Vital MX, Dirt Bike, and Motocross Action
