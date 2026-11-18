@@ -111,6 +111,24 @@ export function isMotocrossOutlet(source) {
   return [...DOMAIN_SET].some((domain) => host === domain || host.endsWith(`.${domain}`));
 }
 
+/**
+ * True when a record's own text places it in motocross: an MX term, an outlet
+ * already known to be motocross, or a watchlist name that passes its gate.
+ *
+ * The search index answers a query loosely. "motocross" comes back with a
+ * powerboat race report, and a rider-name group comes back with an obituary of
+ * an unrelated namesake. A story that shows none of these signals is about
+ * something else and must not become motocross chatter, however many of its
+ * words (win, title, team) look like a race report.
+ */
+export function isMotocrossStory(record) {
+  return (
+    hasMotocrossContext(`${record?.title || ''} ${record?.summary || ''}`) ||
+    isMotocrossOutlet(record) ||
+    classify(record).entities.length > 0
+  );
+}
+
 function keywordHits(text, keyword) {
   if (keyword.includes(' ')) return text.includes(keyword) ? 1 : 0;
   // Single words match as whole tokens so 'sign' does not fire inside 'design'.

@@ -11,6 +11,7 @@ import { FEEDS, NEWS_QUERIES, GOOGLE_NEWS_ENDPOINT, INGEST, NEWS_TITLE_DENYLIST 
 import { httpsUrl, truncate } from '../lib/text.js';
 import { fetchText } from './http.js';
 import { parseFeed } from './feed.js';
+import { isMotocrossStory } from '../engine/classify.js';
 
 function googleUrl(entry) {
   const query = entry.when ? `${entry.query} when:${entry.when}` : entry.query;
@@ -81,6 +82,7 @@ export async function loadNewsSource(def, ctx) {
   let undated = 0;
   let unusable = 0;
   let spam = 0;
+  let offTopic = 0;
 
   for (const item of parsed.items.slice(0, INGEST.itemsPerFeed)) {
     const url = httpsUrl(item.link);
@@ -109,6 +111,16 @@ export async function loadNewsSource(def, ctx) {
       continue;
     }
 
+    // The index answers a query loosely, so a Google News result has to look like
+    // motocross on its own. Direct feeds are configured MX outlets and skip this.
+    if (
+      def.type === 'google' &&
+      !isMotocrossStory({ title, summary: item.summary || null, sourceId: def.id, publisherUrl, url })
+    ) {
+      offTopic += 1;
+      continue;
+    }
+
     records.push({
       sourceId: def.id,
       kind: 'news',
@@ -126,7 +138,12 @@ export async function loadNewsSource(def, ctx) {
   }
 
   if (records.length === 0) {
-    const note = undated > 0 ? 'Feed items had no publication date.' : 'No usable items in the feed.';
+    const note =
+      undated > 0
+        ? 'Feed items had no publication date.'
+        : offTopic > 0
+          ? 'Answered, but none of its items were motocross.'
+          : 'No usable items in the feed.';
     return { status: undated === parsed.items.length ? 'malformed' : 'empty', error: null, records: [], note };
   }
 
@@ -134,6 +151,7 @@ export async function loadNewsSource(def, ctx) {
   if (undated > 0) notes.push(`${undated} undated item${undated === 1 ? '' : 's'} skipped`);
   if (unusable > 0) notes.push(`${unusable} item${unusable === 1 ? '' : 's'} without a usable link`);
   if (spam > 0) notes.push(`${spam} live-stream page${spam === 1 ? '' : 's'} skipped`);
+  if (offTopic > 0) notes.push(`${offTopic} non-motocross item${offTopic === 1 ? '' : 's'} skipped`);
 
   return {
     status: 'live',

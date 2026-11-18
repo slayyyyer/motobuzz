@@ -6,8 +6,13 @@
  * are duplicates, and how a source's status is derived from what happened.
  */
 import { isJunkTitle } from '../adapters/news.js';
+import { NEWS_QUERIES } from '../config.js';
 import { titleKey } from '../lib/text.js';
+import { isMotocrossStory } from './classify.js';
 import { isEligible, urlKey } from './score.js';
+
+/** Search-index records, which carry no promise of being about motocross. */
+const INDEX_SOURCE_IDS = new Set(NEWS_QUERIES.map((entry) => entry.id));
 
 /**
  * Old records may be carried forward only when their source is still configured.
@@ -25,6 +30,9 @@ export function retainPrevious(previous, { configuredSourceIds, now }) {
     if (!isEligible(item, now)) continue;
     // A headline the denylist would reject today must not survive by being old.
     if (isJunkTitle(item.title)) continue;
+    // Neither must an index record that never showed motocross evidence, or the
+    // story that prompted the ingest gate would sit in the cache for two days.
+    if (INDEX_SOURCE_IDS.has(item.sourceId) && !isMotocrossStory(item)) continue;
     if (!configuredSourceIds.has(item.sourceId)) {
       unconfiguredRetained += 1;
       continue;

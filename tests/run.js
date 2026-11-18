@@ -23,7 +23,7 @@ import {
 } from '../src/engine/enrich.js';
 import { isJunkTitle } from '../src/adapters/news.js';
 import { matchUpstream } from '../proxy/allowlist.js';
-import { classify, isMotocrossOutlet } from '../src/engine/classify.js';
+import { classify, isMotocrossOutlet, isMotocrossStory } from '../src/engine/classify.js';
 import { inspectRecord } from '../src/engine/audit.js';
 import {
   buildSnapshot,
@@ -715,6 +715,104 @@ test('drops live-stream spam headlines but keeps real ones', () => {
   assert.equal(isJunkTitle('How to watch: Herlings in the Japan finale'), false);
 });
 
+test('an index record has to be a motocross story to count', () => {
+  // A real result the "motocross" query returned: a powerboat title, not a race.
+  assert.equal(
+    isMotocrossStory({
+      title: "Tom Brady's team wins third consecutive electric powerboat world title",
+      summary: null,
+      publisherUrl: 'https://www.palmbeachpost.com',
+    }),
+    false,
+  );
+  // A rider-name group returned this, and the name is gated, so nothing is left.
+  assert.equal(
+    isMotocrossStory({
+      title: 'Gary Dean Wilson Obituary (2026) - Lancaster, SC',
+      summary: null,
+      publisherUrl: 'https://www.legacy.com',
+    }),
+    false,
+  );
+
+  // A story that never says motocross still counts when it names a rider,
+  // carries an MX term, or comes from a configured motocross outlet.
+  assert.equal(
+    isMotocrossStory({ title: 'Lucas Coenen undergoes surgery on his 20th birthday', summary: null }),
+    true,
+  );
+  assert.equal(
+    isMotocrossStory({ title: 'Monster Energy Supercross announces its 2027 schedule', summary: null }),
+    true,
+  );
+  assert.equal(
+    isMotocrossStory({
+      title: 'Team announces its 2027 line-up',
+      summary: null,
+      publisherUrl: 'https://www.pulpmx.com/',
+    }),
+    true,
+  );
+});
+
+test('an MX-only name recovers a story that names nobody else', () => {
+  const tixier = { title: 'Jordi Tixier reports from hospital: “No warning flags were shown”', summary: null };
+  assert.equal(isMotocrossStory(tixier), true);
+  assert.ok(classify(tixier).entities.includes('jordi-tixier'));
+  assert.ok(classify(tixier).topics.includes('injury'));
+
+  const desmo = { title: 'Ducati Desmo450: Price and variants explained', summary: null };
+  assert.equal(isMotocrossStory(desmo), true);
+  assert.ok(classify(desmo).entities.includes('ducati'), 'the MX model places the brand');
+
+  const stark = { title: 'Stark Future secures €150m-plus as valuation hits €1.2 billion', summary: null };
+  assert.equal(isMotocrossStory(stark), true);
+  assert.ok(classify(stark).entities.includes('stark'));
+
+  const sidecar = {
+    title: 'Historic first: 2027 SidecarCross World Championship round in Geisleden',
+    summary: null,
+  };
+  assert.equal(isMotocrossStory(sidecar), true);
+  assert.ok(classify(sidecar).entities.includes('sidecarcross'));
+
+  const anstie = { title: 'Craig & Antsie Shine Down Under', summary: null };
+  assert.equal(isMotocrossStory(anstie), true, 'one outlet misspells Anstie');
+  assert.ok(classify(anstie).entities.includes('max-anstie'));
+
+  const dirtAction = {
+    title: 'TRIUMPH ALL IN: WINNING MINDSET – EPISODE 2 RELEASED',
+    summary: null,
+    publisherUrl: 'https://www.dirtaction.com.au/',
+  };
+  assert.equal(isMotocrossStory(dirtAction), true, 'Dirt Action is an MX outlet');
+
+  // A series-level result is motocross even though it names no rider; a result
+  // returned by a rider-name query is not held to a stricter rule than any other.
+  const seriesResult = { title: '2026 Australian Supercross Round 4 Results', summary: null };
+  assert.equal(isMotocrossStory(seriesResult), true);
+});
+
+test('the new names do not let other subjects back in', () => {
+  const other = [
+    {
+      title: "Tom Brady's team wins third consecutive electric powerboat world title",
+      summary: null,
+      publisherUrl: 'https://www.palmbeachpost.com',
+    },
+    { title: 'Metra Shows New Radios, Interfaces and Audio Kits at SEMA', summary: null },
+    { title: 'Harold Wilson Obituary - Overland Park, KS', summary: null },
+    // Road-racing sidecars are a different championship, so no SidecarCross alias matches.
+    { title: 'Sidecar World Championship: Christie brothers win at Assen', summary: null },
+    // A road bike stays gated: the product is not an MX model.
+    { title: 'Ducati Panigale V4 S review', summary: null },
+    { title: 'Triumph Speed 400 first ride', summary: null },
+  ];
+  for (const record of other) {
+    assert.equal(isMotocrossStory(record), false, record.title);
+  }
+});
+
 /* ---------- build pipeline ---------- */
 
 test('a retained record from a source no longer configured is dropped', () => {
@@ -731,6 +829,47 @@ test('a retained record from a source no longer configured is dropped', () => {
   assert.equal(out.retained[0].url, 'https://example.com/keep');
   assert.equal(out.unconfiguredRetained, 1);
   assert.equal(out.retainedBySource.get('test'), 1);
+});
+
+test('a carried-forward index record with no motocross evidence is dropped', () => {
+  const base = { kind: 'news', summary: null, publishedAt: NOW };
+  const previous = {
+    items: [
+      {
+        ...base,
+        sourceId: 'gnews-motocross',
+        publisher: 'The Palm Beach Post',
+        publisherUrl: 'https://www.palmbeachpost.com',
+        title: "Tom Brady's team wins third consecutive electric powerboat world title",
+        url: 'https://example.com/boat',
+      },
+      {
+        ...base,
+        sourceId: 'gnews-motocross',
+        publisher: 'PulpMX',
+        publisherUrl: 'https://www.pulpmx.com',
+        title: 'Ken Roczen signs a two-year extension with Suzuki',
+        url: 'https://example.com/keep',
+      },
+      // A configured MX outlet's own feed needs no keyword in the headline.
+      {
+        ...base,
+        sourceId: 'pulpmx',
+        publisher: 'PulpMX',
+        publisherUrl: 'https://www.pulpmx.com',
+        title: 'Episode 500 is here',
+        url: 'https://example.com/show',
+      },
+    ],
+  };
+  const out = retainPrevious(previous, {
+    configuredSourceIds: new Set(['gnews-motocross', 'pulpmx']),
+    now: NOW,
+  });
+  assert.deepEqual(
+    out.retained.map((item) => item.url),
+    ['https://example.com/keep', 'https://example.com/show'],
+  );
 });
 
 test('dedupe drops duplicates and records outside the window', () => {

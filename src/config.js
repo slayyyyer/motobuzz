@@ -183,7 +183,9 @@ export const RIDERS = Object.freeze([
   { id: 'nate-thrasher', name: 'Nate Thrasher', aliases: ['Nate Thrasher', 'Thrasher'] },
   { id: 'justin-cooper', name: 'Justin Cooper', aliases: ['Justin Cooper'], contextRequired: true },
   { id: 'dylan-ferrandis', name: 'Dylan Ferrandis', aliases: ['Dylan Ferrandis', 'Ferrandis'] },
-  { id: 'max-anstie', name: 'Max Anstie', aliases: ['Max Anstie', 'Anstie'] },
+  // Speed Sport published "Craig & Antsie Shine Down Under" for an AUSX result, so
+  // the misspelling is carried as an alias; it matches nothing else.
+  { id: 'max-anstie', name: 'Max Anstie', aliases: ['Max Anstie', 'Anstie', 'Antsie'] },
   { id: 'justin-barcia', name: 'Justin Barcia', aliases: ['Justin Barcia', 'Barcia'] },
   { id: 'pierce-brown', name: 'Pierce Brown', aliases: ['Pierce Brown'], contextRequired: true },
   { id: 'ty-masterpool', name: 'Ty Masterpool', aliases: ['Ty Masterpool', 'Masterpool'] },
@@ -212,6 +214,10 @@ export const RIDERS = Object.freeze([
   { id: 'thibault-benistant', name: 'Thibault Benistant', aliases: ['Thibault Benistant', 'Benistant'] },
   { id: 'andrea-bonacorsi', name: 'Andrea Bonacorsi', aliases: ['Andrea Bonacorsi', 'Bonacorsi'] },
   { id: 'antonio-cairoli', name: 'Antonio Cairoli', aliases: ['Antonio Cairoli', 'Cairoli'] },
+  // Riders added because their own coverage kept arriving with a headline that
+  // names nobody else and says nothing from the motocross vocabulary.
+  { id: 'jordi-tixier', name: 'Jordi Tixier', aliases: ['Jordi Tixier', 'Tixier'] },
+  { id: 'christian-craig', name: 'Christian Craig', aliases: ['Christian Craig'] },
 ]);
 
 export const BRANDS = Object.freeze([
@@ -224,7 +230,9 @@ export const BRANDS = Object.freeze([
   { id: 'gasgas', name: 'GASGAS', aliases: ['GASGAS', 'Gas Gas'], contextRequired: true },
   { id: 'triumph', name: 'Triumph', aliases: ['Triumph'], contextRequired: true },
   { id: 'ducati', name: 'Ducati', aliases: ['Ducati'], contextRequired: true },
-  { id: 'stark', name: 'Stark Future', aliases: ['Stark Future', 'Stark Varg'], contextRequired: true },
+  // Ungated: both names are MX-only, so a valuation or product story about Stark
+  // Future is a motocross story with no context word needed.
+  { id: 'stark', name: 'Stark Future', aliases: ['Stark Future', 'Stark Varg'] },
   { id: 'beta', name: 'Beta', aliases: ['Beta Motorcycles', 'Beta Racing'], contextRequired: true },
   { id: 'fantic', name: 'Fantic', aliases: ['Fantic'], contextRequired: true },
 ]);
@@ -250,6 +258,9 @@ export const SERIES = Object.freeze([
   { id: 'wsx', name: 'World Supercross', aliases: ['World Supercross', 'WSX'] },
   { id: 'loretta', name: "Loretta Lynn's", aliases: ["Loretta Lynn's", 'Lorettas', 'Loretta'] },
   { id: 'world-vet', name: 'World Vet Championship', aliases: ['World Vet'] },
+  // The FIM sidecar motocross championship. Its own names are used, not "Sidecar
+  // World Championship", which is the separate road-racing series.
+  { id: 'sidecarcross', name: 'SidecarCross', aliases: ['SidecarCross', 'Sidecar Cross', 'Sidecar Motocross World Championship'] },
 ]);
 
 /**
@@ -275,6 +286,9 @@ export const MOTOCROSS_CONTEXT = Object.freeze([
     'wsx',
     'dirt bike',
     'dirtbike',
+    // Ducati's motocross model. An MX-only model name places a story even when
+    // the headline never says motocross.
+    'desmo450',
     'moto',
     'motos',
     'mx',
@@ -321,6 +335,7 @@ export const MOTOCROSS_ENTITY_CONTEXT = Object.freeze([
     'wsx',
     'dirt bike',
     'dirtbike',
+    'desmo450',
     'motocross track',
     'supercross track',
     'holeshot',
@@ -484,6 +499,7 @@ export const MOTOCROSS_DOMAINS = Object.freeze([
     'racer.com',
     'bikeridermagazine.co.nz',
     'dirthub.co.uk',
+    'dirtaction.com.au',
     'fullnoise.com.au',
     'fim-live.com',
     'fim-europe.com',
@@ -539,6 +555,7 @@ export const NEWS_QUERIES = Object.freeze([
   ...riderNameQueries(),
   { id: 'gnews-pro-motocross', label: 'Pro Motocross', query: '"Pro Motocross" OR "motocross national"', when: '3d' },
 ]);
+
 
 export const GOOGLE_NEWS_ENDPOINT = 'https://news.google.com/rss/search';
 
